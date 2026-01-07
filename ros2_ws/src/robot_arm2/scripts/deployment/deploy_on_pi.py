@@ -50,15 +50,7 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, 'rl'))
 
-# Try to import ONNX Runtime (preferred)
-try:
-    import onnxruntime as ort
-    ONNX_AVAILABLE = True
-except ImportError:
-    ONNX_AVAILABLE = False
-    print("⚠️  ONNX Runtime not found - install with: pip3 install onnxruntime")
-
-# Try to import TFLite Runtime (fallback)
+# Import TFLite Runtime
 try:
     import tflite_runtime.interpreter as tflite
     TFLITE_AVAILABLE = True
@@ -68,6 +60,7 @@ except ImportError:
         TFLITE_AVAILABLE = True
     except ImportError:
         TFLITE_AVAILABLE = False
+        print("❌ TFLite Runtime not found - install with: pip3 install tflite-runtime")
 
 # Try to import FK utilities
 try:
@@ -167,21 +160,15 @@ class RLDeploymentNode(Node):
         
         self.model_path = model_path
         self.log_performance = log_performance
-        self.model_type = None  # 'onnx' or 'tflite'
         
-        # Detect model format and load
-        if model_path.endswith('.onnx'):
-            self._load_onnx_model(model_path)
-        elif model_path.endswith('.tflite'):
-            self._load_tflite_model(model_path)
-        else:
-            # Try ONNX first, then TFLite
-            if ONNX_AVAILABLE:
-                self._load_onnx_model(model_path)
-            elif TFLITE_AVAILABLE:
-                self._load_tflite_model(model_path)
-            else:
-                raise RuntimeError("No model runtime available! Install onnxruntime or tflite-runtime")
+        # Load TFLite model
+        if not TFLITE_AVAILABLE:
+            raise RuntimeError("TFLite runtime not available! Install with: pip3 install tflite-runtime")
+        
+        if not model_path.endswith('.tflite'):
+            model_path = model_path + '.tflite'
+        
+        self._load_tflite_model(model_path)
         
         # Current state
         self.joint_positions = np.zeros(6, dtype=np.float32)
@@ -191,32 +178,6 @@ class RLDeploymentNode(Node):
         
         # Setup ROS2 interfaces
         self._setup_ros2_interfaces()
-    
-    def _load_onnx_model(self, model_path: str):
-        """Load ONNX model using onnxruntime"""
-        if not ONNX_AVAILABLE:
-            raise RuntimeError("ONNX Runtime not available!")
-        
-        self.get_logger().info(f"\n📦 Loading ONNX model: {model_path}")
-        
-        self.onnx_session = ort.InferenceSession(model_path)
-        self.onnx_input_name = self.onnx_session.get_inputs()[0].name
-        self.onnx_output_name = self.onnx_session.get_outputs()[0].name
-        
-        input_shape = self.onnx_session.get_inputs()[0].shape
-        output_shape = self.onnx_session.get_outputs()[0].shape
-        
-        self.get_logger().info(f"✅ ONNX model loaded")
-        self.get_logger().info(f"   Input: {input_shape}")
-        self.get_logger().info(f"   Output: {output_shape}")
-        
-        # Verify dimensions
-        if input_shape[1] != STATE_DIM:
-            self.get_logger().warn(f"Model expects state dim {input_shape[1]}, expected {STATE_DIM}")
-        if output_shape[1] != ACTION_DIM:
-            self.get_logger().warn(f"Model expects action dim {output_shape[1]}, expected {ACTION_DIM}")
-        
-        self.model_type = 'onnx'
     
     def _load_tflite_model(self, model_path: str):
         """Load TFLite model"""
@@ -322,7 +283,7 @@ class RLDeploymentNode(Node):
     
     def run_inference(self, state: np.ndarray) -> tuple:
         """
-        Run model inference (ONNX or TFLite)
+        Run TFLite model inference
         
         Returns:
             (action, latency_ms)
@@ -331,18 +292,10 @@ class RLDeploymentNode(Node):
         
         input_data = np.expand_dims(state, axis=0).astype(np.float32)
         
-        if self.model_type == 'onnx':
-            # ONNX Runtime inference
-            result = self.onnx_session.run(
-                [self.onnx_output_name],
-                {self.onnx_input_name: input_data}
-            )
-            action = result[0][0]
-        else:
-            # TFLite inference
-            self.interpreter.set_tensor(self.input_details['index'], input_data)
-            self.interpreter.invoke()
-            action = self.interpreter.get_tensor(self.output_details['index'])[0]
+        # TFLite inference
+        self.interpreter.set_tensor(self.input_details['index'], input_data)
+        self.interpreter.invoke()
+        action = self.interpreter.get_tensor(self.output_details['index'])[0]
         
         latency_ms = (time.perf_counter() - start) * 1000
         return action, latency_ms

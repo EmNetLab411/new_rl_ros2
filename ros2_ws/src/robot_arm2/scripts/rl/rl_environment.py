@@ -42,17 +42,27 @@ except ImportError:
 # WORKSPACE CONFIGURATION - 3D Workspace for Target Randomization
 # ============================================================================
 
-# 3D workspace parameters (no longer fixed Y)
-# X: ±12cm from center
-# Y: 15cm to 40cm (toward -Y axis)
-# Z: 18cm to 42cm (centered at 30cm, ±12cm range)
+# 3D workspace parameters (based on detailed FK analysis - 50,000 samples)
+# Robot is at origin, targets are in FRONT of robot (-Y direction)
+#
+# From FK exploration (5-95 percentile for safety):
+#   Reachable X: [-0.24, +0.24] → using ±24cm (symmetric)
+#   Reachable Y: [-0.25, +0.22] → using -35cm to -5cm (only forward, extended)
+#   Reachable Z: [0.06, 0.42] → using 8-40cm (avoid ground, safe ceiling)
+#
+# Key positions:
+#   Home: X=-0.003, Y=-0.022, Z=0.488 (high above)
+#   J2=45°: Y=-0.28 (forward reach)
+#   J2=90°: Y=-0.39 (max forward, low Z)
+#
+# Note: Robot faces -Y direction (toward drawing surface)
 
-SURFACE_X_MIN = -0.12  # -12cm
-SURFACE_X_MAX = 0.12   # +12cm
-SURFACE_Y_MIN = -0.40  # -40cm (further from robot)
-SURFACE_Y_MAX = -0.15  # -15cm (closer to robot)
-SURFACE_Z_MIN = 0.18   # 18cm (30cm center - 12cm)
-SURFACE_Z_MAX = 0.42   # 42cm (30cm center + 12cm)
+SURFACE_X_MIN = -0.24  # -24cm (symmetric, 5-95% safe)
+SURFACE_X_MAX = 0.24   # +24cm (symmetric)
+SURFACE_Y_MIN = -0.35  # -35cm (max forward reach)
+SURFACE_Y_MAX = -0.05  # -5cm (close to robot but not too close)
+SURFACE_Z_MIN = 0.08   # 8cm (avoid ground collision)
+SURFACE_Z_MAX = 0.40   # 40cm (within reachable height)
 
 # Target sphere radius (for border margin calculation)
 TARGET_RADIUS = 0.01  # 1cm radius
@@ -60,12 +70,12 @@ TARGET_RADIUS = 0.01  # 1cm radius
 # Workspace boundaries for target spawning (with 1cm margin from borders)
 # This ensures the 1cm radius target sphere stays fully within the workspace
 WORKSPACE_BOUNDS = {
-    'x_min': SURFACE_X_MIN + TARGET_RADIUS,  # -11cm
-    'x_max': SURFACE_X_MAX - TARGET_RADIUS,  # +11cm
-    'y_min': SURFACE_Y_MIN + TARGET_RADIUS,  # -39cm
-    'y_max': SURFACE_Y_MAX - TARGET_RADIUS,  # -16cm
-    'z_min': SURFACE_Z_MIN + TARGET_RADIUS,  # 19cm
-    'z_max': SURFACE_Z_MAX - TARGET_RADIUS   # 41cm
+    'x_min': SURFACE_X_MIN + TARGET_RADIUS,  # -23cm
+    'x_max': SURFACE_X_MAX - TARGET_RADIUS,  # +23cm
+    'y_min': SURFACE_Y_MIN + TARGET_RADIUS,  # -34cm
+    'y_max': SURFACE_Y_MAX - TARGET_RADIUS,  # -6cm
+    'z_min': SURFACE_Z_MIN + TARGET_RADIUS,  # 9cm
+    'z_max': SURFACE_Z_MAX - TARGET_RADIUS   # 39cm
 }
 
 
@@ -80,13 +90,13 @@ class RLEnvironment(Node):
     Provides Gym-compatible interface for reinforcement learning training.
     """
     
-    def __init__(self, max_episode_steps=200, goal_tolerance=0.0075):
+    def __init__(self, max_episode_steps=200, goal_tolerance=0.01):
         """
         Initialize RL Environment
         
         Args:
             max_episode_steps: Maximum steps per episode (default: 200)
-            goal_tolerance: Distance threshold for goal achievement (default: 7.5mm)
+            goal_tolerance: Distance threshold for goal achievement (default: 1cm = sphere radius)
         """
         super().__init__('rl_environment')
         
@@ -124,39 +134,38 @@ class RLEnvironment(Node):
         self.last_ik_success = 1.0
         
         # RL Spaces (Gym-compatible)
-        # ACTION SPACE: 6D joint angle DELTAS (radians) - Direct joint control!
-        # Each action is a change in joint angle, ±0.1 rad (~5.7°) per step
-        MAX_JOINT_DELTA = 0.1  # radians
+        # ACTION SPACE: 6D ABSOLUTE joint angles (radians) - Direct joint control!
+        # Agent outputs target joint positions, constrained by joint limits ±90°
+        # This allows the robot to move freely to any configuration in 1 step
         self.action_space = spaces.Box(
-            low=np.array([-MAX_JOINT_DELTA] * 6),
-            high=np.array([MAX_JOINT_DELTA] * 6),
+            low=self.joint_limits_low,   # -π/2 for all joints
+            high=self.joint_limits_high,  # +π/2 for all joints
             dtype=np.float32
         )
         
-        # OBSERVATION SPACE: 18D state for 6-DOF direct joint control
-        # [joints(6), robot_xyz(3), target_xyz(3), dist_xyz(3), dist_3d(1), key_velocities(2)]
+        # OBSERVATION SPACE: 16D state for 6-DOF direct joint control
+        # [joints(6), robot_xyz(3), target_xyz(3), dist_xyz(3), dist_3d(1)]
+        # NOTE: key_velocities removed - not useful for learning
         self.observation_space = spaces.Box(
             low=np.array([
                 -np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2,  # joint limits min
                 -0.30, -0.50, 0.0,                                  # robot_xyz min
                 -0.30, -0.50, 0.0,                                  # target_xyz min
                 -0.60, -0.60, -0.60,                                # dist_xyz min
-                0.0,                                                 # dist_3d min
-                -10.0, -10.0                                         # key velocities (joints 2,3)
+                0.0                                                  # dist_3d min
             ]),
             high=np.array([
                 np.pi/2, np.pi/2, np.pi/2, np.pi/2, np.pi/2, np.pi/2,  # joint limits max
                 0.30, 0.0, 0.50,                                    # robot_xyz max
                 0.30, 0.0, 0.50,                                    # target_xyz max
                 0.60, 0.60, 0.60,                                    # dist_xyz max
-                1.0,                                                 # dist_3d max
-                10.0, 10.0                                           # key velocities
+                1.0                                                  # dist_3d max
             ]),
             dtype=np.float32
         )
         
-        self.get_logger().info(f"📊 Action space: 6D joint angle deltas (direct joint control)")
-        self.get_logger().info(f"📊 Observation space: 18D state")
+        self.get_logger().info(f"📊 Action space: 6D absolute joint angles (±90°)")
+        self.get_logger().info(f"📊 Observation space: 16D state")
         
         # Target sphere state (static sphere in world file)
         self.target_spawned = True
@@ -338,10 +347,8 @@ class RLEnvironment(Node):
                 # Distance vector (3)
                 dist_x, dist_y, dist_z,
                 # Euclidean distance (1)
-                dist_3d,
-                # Key joint velocities (2) - joints 2 and 3 are most important for reaching
-                self.joint_velocities[1], self.joint_velocities[2]
-            ], dtype=np.float32)
+                dist_3d
+            ], dtype=np.float32)  # Total: 16D
             
             return state
             
@@ -409,7 +416,7 @@ class RLEnvironment(Node):
         Execute one environment step using DIRECT JOINT CONTROL
         
         Args:
-            action: 6D joint angle DELTAS (radians) to add to current joint positions
+            action: 6D ABSOLUTE joint angles (radians) - target joint positions
         
         Returns:
             Tuple of (next_state, reward, done, info)
@@ -425,15 +432,14 @@ class RLEnvironment(Node):
         # Calculate distance before (dist_3d is at index 15 in 18D state)
         dist_before = state_before[15]
         
-        # DIRECT JOINT CONTROL: Add action (deltas) to current joint positions
-        current_joints = np.array(self.joint_positions)
-        target_joints = current_joints + np.array(action)
+        # ABSOLUTE JOINT CONTROL: Action IS the target joint positions (not delta!)
+        target_joints = np.array(action)
         
-        # Clip to joint limits
+        # Clip to joint limits (±90°)
         target_joints = np.clip(target_joints, self.joint_limits_low, self.joint_limits_high)
         
-        # Execute movement (no IK needed!)
-        success = self._move_to_joint_positions(target_joints, duration=0.5)
+        # Execute movement - robot moves directly to target in single trajectory
+        success = self._move_to_joint_positions(target_joints, duration=1.0)
         
         # Wait for movement to complete and state to update
         time.sleep(0.3)
@@ -475,12 +481,15 @@ class RLEnvironment(Node):
     
     def _calculate_reward(self, dist_after: float, dist_before: float) -> Tuple[float, bool]:
         """
-        Calculate reward based on distance to goal (no IK dependency)
+        Calculate reward based on distance to goal
         
-        Reward structure:
-        - Goal reached (dist < tolerance): +10.0
-        - Getting closer: +10.0 * improvement
-        - Step penalty: -0.1
+        NEW Reward Structure:
+        - Goal reached (dist < 1cm): +10.0, episode done
+        - Distance penalty: -5.0 * distance (encourages staying close)
+        - Improvement bonus: +10.0 * improvement (closer = reward)
+        - Moving away penalty: 2× (10.0 * improvement * 2.0)
+        - Step penalty: -0.5
+        - Clipped to [-10, +10] to prevent explosion
         
         Args:
             dist_after: Distance to goal after action
@@ -490,20 +499,33 @@ class RLEnvironment(Node):
             Tuple of (reward, done)
         """
         done = False
-        reward = 0.0
         
-        # Goal reached
-        if dist_after < self.goal_tolerance:
+        # Goal reached (1cm = radius of target sphere)
+        if dist_after < self.goal_tolerance:  # 0.01m = 1cm
             reward = 10.0
             done = True
             self.get_logger().info(f"🎯 Goal reached! Distance: {dist_after*1000:.1f}mm")
         else:
-            # Distance-based reward
-            improvement = dist_before - dist_after
-            reward = improvement * 10.0  # Scale improvement
+            # Distance penalty (negative, proportional to distance)
+            dist_reward = -5.0 * dist_after
             
-            # Step penalty (encourage efficiency)
-            reward -= 0.1
+            # Improvement reward (asymmetric: 2× penalty for moving away)
+            improvement = dist_before - dist_after
+            if improvement >= 0:
+                # Getting closer - positive reward
+                improve_reward = 10.0 * improvement
+            else:
+                # Moving away - 2× penalty (harsher punishment)
+                improve_reward = 10.0 * improvement * 2.0
+            
+            # Step penalty
+            step_penalty = 0.5
+            
+            # Combine all components
+            reward = dist_reward + improve_reward - step_penalty
+            
+            # Clip to prevent reward explosion
+            reward = np.clip(reward, -10.0, 10.0)
         
         return reward, done
     

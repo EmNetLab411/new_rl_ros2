@@ -2,20 +2,24 @@
 <sdf version="1.8">
   <model name="drawing_surface">
     <!-- 3D Workspace Visualization Box -->
-    <!-- X: ±12cm, Y: -40cm to -15cm, Z: 18cm to 42cm -->
-    <!-- Center: X=0, Y=-27.5cm, Z=30cm -->
+    <!-- UPDATED workspace based on FK analysis:
+         X: ±24cm (symmetric)
+         Y: -35cm to -5cm (forward of robot)  
+         Z: 8cm to 40cm
+         Center: X=0, Y=-20cm, Z=24cm
+    -->
     <pose>0 0 0 0 0 0</pose>
     <static>true</static>
     
     <!-- Workspace bounds (green wireframe) -->
     
-    <!-- Top border (Z = 42cm) -->
+    <!-- Top border (Z = 40cm) -->
     <link name="top_border">
-      <pose>0 -0.275 0.42 0 0 0</pose>
+      <pose>0 -0.20 0.40 0 0 0</pose>
       <visual name="top_border_visual">
         <geometry>
           <box>
-            <size>0.24 0.25 0.01</size>  <!-- 24cm x 25cm x 1cm -->
+            <size>0.48 0.30 0.01</size>  <!-- 48cm x 30cm x 1cm -->
           </box>
         </geometry>
         <material>
@@ -25,13 +29,13 @@
       </visual>
     </link>
     
-    <!-- Bottom border (Z = 18cm) -->
+    <!-- Bottom border (Z = 8cm) -->
     <link name="bottom_border">
-      <pose>0 -0.275 0.18 0 0 0</pose>
+      <pose>0 -0.20 0.08 0 0 0</pose>
       <visual name="bottom_border_visual">
         <geometry>
           <box>
-            <size>0.24 0.25 0.01</size>
+            <size>0.48 0.30 0.01</size>
           </box>
         </geometry>
         <material>
@@ -41,13 +45,13 @@
       </visual>
     </link>
     
-    <!-- Left border (X = -12cm) -->
+    <!-- Left border (X = -24cm) -->
     <link name="left_border">
-      <pose>-0.12 -0.275 0.30 0 0 0</pose>
+      <pose>-0.24 -0.20 0.24 0 0 0</pose>
       <visual name="left_border_visual">
         <geometry>
           <box>
-            <size>0.01 0.25 0.24</size>  <!-- 1cm x 25cm x 24cm -->
+            <size>0.01 0.30 0.32</size>  <!-- 1cm x 30cm x 32cm -->
           </box>
         </geometry>
         <material>
@@ -57,13 +61,13 @@
       </visual>
     </link>
     
-    <!-- Right border (X = +12cm) -->
+    <!-- Right border (X = +24cm) -->
     <link name="right_border">
-      <pose>0.12 -0.275 0.30 0 0 0</pose>
+      <pose>0.24 -0.20 0.24 0 0 0</pose>
       <visual name="right_border_visual">
         <geometry>
           <box>
-            <size>0.01 0.25 0.24</size>
+            <size>0.01 0.30 0.32</size>
           </box>
         </geometry>
         <material>
@@ -73,13 +77,13 @@
       </visual>
     </link>
     
-    <!-- Front border (Y = -15cm, closer to robot) -->
+    <!-- Front border (Y = -5cm, closer to robot) -->
     <link name="front_border">
-      <pose>0 -0.15 0.30 0 0 0</pose>
+      <pose>0 -0.05 0.24 0 0 0</pose>
       <visual name="front_border_visual">
         <geometry>
           <box>
-            <size>0.24 0.01 0.24</size>
+            <size>0.48 0.01 0.32</size>
           </box>
         </geometry>
         <material>
@@ -89,13 +93,13 @@
       </visual>
     </link>
     
-    <!-- Back border (Y = -40cm, further from robot) -->
+    <!-- Back border (Y = -35cm, further from robot) -->
     <link name="back_border">
-      <pose>0 -0.40 0.30 0 0 0</pose>
+      <pose>0 -0.35 0.24 0 0 0</pose>
       <visual name="back_border_visual">
         <geometry>
           <box>
-            <size>0.24 0.01 0.24</size>
+            <size>0.48 0.01 0.32</size>
           </box>
         </geometry>
         <material>
@@ -107,7 +111,7 @@
     
     <!-- Center marker for reference -->
     <link name="center_marker">
-      <pose>0 -0.275 0.30 0 0 0</pose>
+      <pose>0 -0.20 0.24 0 0 0</pose>
       <visual name="center_marker_visual">
         <geometry>
           <sphere>

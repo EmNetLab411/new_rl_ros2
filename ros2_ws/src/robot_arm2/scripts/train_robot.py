@@ -61,6 +61,53 @@ TAU = 0.005
 BATCH_SIZE = 256
 BUFFER_SIZE = int(1e6)
 
+# Auto-cleanup settings
+MAX_BUFFER_FILES = 3      # Keep only N most recent buffer files (per type)
+MAX_CHECKPOINT_FILES = 3  # Keep only N most recent checkpoints
+
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+def cleanup_old_files(directory: str, pattern: str, keep_count: int = 3, dry_run: bool = False):
+    """
+    Auto-cleanup old files, keeping only the most recent 'keep_count' files.
+    
+    Args:
+        directory: Directory to clean
+        pattern: Glob pattern for files (e.g., "*.pkl")
+        keep_count: Number of files to keep
+        dry_run: If True, only print what would be deleted
+    
+    Returns:
+        Number of files deleted
+    """
+    import glob
+    
+    files = glob.glob(os.path.join(directory, pattern))
+    if len(files) <= keep_count:
+        return 0
+    
+    # Sort by modification time (newest first)
+    files.sort(key=os.path.getmtime, reverse=True)
+    
+    # Delete old files (keep the newest 'keep_count')
+    files_to_delete = files[keep_count:]
+    deleted_count = 0
+    
+    for f in files_to_delete:
+        try:
+            if dry_run:
+                print(f"   [DRY RUN] Would delete: {f}")
+            else:
+                os.remove(f)
+                deleted_count += 1
+        except Exception as e:
+            print(f"   ⚠️  Failed to delete {f}: {e}")
+    
+    return deleted_count
+
 
 # ============================================================================
 # TRAINING LOOP
@@ -92,17 +139,18 @@ def train(args):
         # Create agent based on selection
         print(f"\n🤖 Creating {args.agent.upper()} agent...")
         
-        # Agent configuration for DIRECT JOINT CONTROL
-        # Action: 6D joint angle deltas (±0.1 rad per step)
+        # Agent configuration for ABSOLUTE JOINT CONTROL
+        # Action: 6D ABSOLUTE joint angles (±π/2 rad = ±90°)
+        # Agent outputs target joint positions, not deltas
         # State: 18D observation from environment
-        MAX_JOINT_DELTA = 0.1  # radians (~5.7°)
+        JOINT_LIMIT = np.pi / 2  # ±90° = ±1.57 rad
         
         if args.agent == 'td3':
             agent = TD3Agent(
-                state_dim=18,  # 18D observation
-                action_dim=6,  # 6 joint angle deltas
-                max_action=np.array([MAX_JOINT_DELTA] * 6),
-                min_action=np.array([-MAX_JOINT_DELTA] * 6),
+                state_dim=16,  # 16D observation (no key_velocities)
+                action_dim=6,  # 6 absolute joint angles
+                max_action=np.array([JOINT_LIMIT] * 6),   # +90°
+                min_action=np.array([-JOINT_LIMIT] * 6),  # -90°
                 actor_lr=ACTOR_LR,
                 critic_lr=CRITIC_LR,
                 gamma=GAMMA,
@@ -110,18 +158,18 @@ def train(args):
                 batch_size=BATCH_SIZE,
                 buffer_size=BUFFER_SIZE
             )
-            print(f"TD3 Agent initialized (Direct Joint Control):")
-            print(f"  State dim: 18, Action dim: 6 (joint deltas)")
-            print(f"  Max delta: ±{np.degrees(MAX_JOINT_DELTA):.1f}° per step")
+            print(f"TD3 Agent initialized (Absolute Joint Control):")
+            print(f"  State dim: 16, Action dim: 6 (absolute joint angles)")
+            print(f"  Joint range: ±{np.degrees(JOINT_LIMIT):.0f}° per joint")
             print(f"  Device: {agent.device}")
             print(f"  Buffer size: {BUFFER_SIZE}, Batch size: {BATCH_SIZE}")
         
         elif args.agent == 'sac':
             agent = SACAgentGazebo(
-                state_dim=18,  # 18D observation
-                n_actions=6,   # 6 joint angle deltas
-                max_action=np.array([MAX_JOINT_DELTA] * 6),
-                min_action=np.array([-MAX_JOINT_DELTA] * 6),
+                state_dim=16,  # 16D observation (no key_velocities)
+                n_actions=6,   # 6 absolute joint angles
+                max_action=np.array([JOINT_LIMIT] * 6),   # +90°
+                min_action=np.array([-JOINT_LIMIT] * 6),  # -90°
                 actor_lr=ACTOR_LR,
                 critic_lr=CRITIC_LR,
                 gamma=GAMMA,
@@ -130,9 +178,9 @@ def train(args):
                 buffer_size=BUFFER_SIZE,
                 auto_entropy_tuning=True
             )
-            print(f"SAC Agent initialized (Direct Joint Control):")
-            print(f"  State dim: 18, Action dim: 6 (joint deltas)")
-            print(f"  Max delta: ±{np.degrees(MAX_JOINT_DELTA):.1f}° per step")
+            print(f"SAC Agent initialized (Absolute Joint Control):")
+            print(f"  State dim: 16, Action dim: 6 (absolute joint angles)")
+            print(f"  Joint range: ±{np.degrees(JOINT_LIMIT):.0f}° per joint")
         
         else:
             raise ValueError(f"Unknown agent: {args.agent}. Choose 'td3' or 'sac'")
@@ -140,16 +188,26 @@ def train(args):
         # Ask to load existing replay buffer
         load_buffer = input("\n📦 Load existing replay buffer? (y/n): ").strip().lower()
         if load_buffer == 'y':
-            # Auto-find best available buffer
+            # Find available buffers - prioritize BEST over FINAL
             import glob
-            buffer_files = glob.glob("training_results/pkl/*best*.pkl") + glob.glob("training_results/pkl/*final*.pkl")
-            buffer_files.sort(key=os.path.getmtime, reverse=True)  # Most recent first
+            best_buffers = sorted(glob.glob("training_results/pkl/*best*.pkl"), key=os.path.getmtime, reverse=True)
+            final_buffers = sorted(glob.glob("training_results/pkl/*final*.pkl"), key=os.path.getmtime, reverse=True)
+            
+            # Best buffers first, then final buffers
+            buffer_files = best_buffers + final_buffers
             
             if buffer_files:
-                default_buffer = buffer_files[0]
-                print(f"   Found buffers: {len(buffer_files)}")
-                print(f"   Latest: {default_buffer}")
-                buffer_path = input(f"   Enter path (Enter = load best buffer): ").strip()
+                print(f"   Found {len(best_buffers)} best buffers, {len(final_buffers)} final buffers")
+                
+                # Show top options
+                if best_buffers:
+                    print(f"   [BEST]  {best_buffers[0]}")
+                if final_buffers:
+                    print(f"   [FINAL] {final_buffers[0]}")
+                
+                # Default to best buffer if available, else final
+                default_buffer = best_buffers[0] if best_buffers else final_buffers[0]
+                buffer_path = input(f"   Enter path (Enter = {os.path.basename(default_buffer)}): ").strip()
                 if buffer_path == '':
                     buffer_path = default_buffer
             else:
@@ -167,36 +225,26 @@ def train(args):
             elif buffer_path:
                 print(f"   ❌ Buffer file not found: {buffer_path}")
         
-        # Ask to load existing model weights (CRITICAL for continuing training!)
-        load_model = input("\n🧠 Load existing model weights? (y/n): ").strip().lower()
-        if load_model == 'y':
-            import glob
-            # Find best model checkpoints based on agent type
-            checkpoint_dir = f"checkpoints/{args.agent}_gazebo" if args.agent == 'sac' else f"checkpoints/{args.agent}"
-            actor_files = glob.glob(f"{checkpoint_dir}/actor_*best*.pth")
-            
-            if actor_files:
-                actor_files.sort(key=os.path.getmtime, reverse=True)
-                default_model = actor_files[0]
-                print(f"   Found best model: {default_model}")
-                model_path = input(f"   Enter path (Enter = load best model): ").strip()
-                if model_path == '':
-                    model_path = default_model
-            else:
-                print(f"   No model files found in {checkpoint_dir}/")
-                print(f"   Example: {checkpoint_dir}/actor_sac_best.pth")
-                model_path = input("   Enter path (Enter = skip): ").strip()
-            
-            if model_path and os.path.exists(model_path):
-                try:
-                    agent.load_models(model_path)
-                    print(f"   ✅ Loaded model weights - agent will use trained policy!")
-                except Exception as e:
-                    print(f"   ❌ Failed to load model: {e}")
-            elif model_path:
-                print(f"   ❌ Model file not found: {model_path}")
+        # Automatically try to load pre-trained models (like old code)
+        # This allows continuing training from previous checkpoint
+        checkpoint_dir = f"checkpoints/{args.agent}_gazebo"
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        
+        actor_path = os.path.join(checkpoint_dir, f'actor_{args.agent}_best.pth')
+        critic_path = os.path.join(checkpoint_dir, f'critic_{args.agent}_best.pth')
+        
+        if os.path.exists(actor_path) and os.path.exists(critic_path):
+            try:
+                agent.load_models(actor_path, critic_path)
+                print(f"\n✅ Loaded pre-trained models from: {checkpoint_dir}")
+                print(f"   Actor: {os.path.basename(actor_path)}")
+                print(f"   Critic: {os.path.basename(critic_path)}")
+            except Exception as e:
+                print(f"\n⚠️  Failed to load models: {e}")
+                print("   Starting with untrained agent")
         else:
-            print("   ⚠️  Starting with RANDOM policy (model weights not loaded)")
+            print(f"\n📝 No pre-trained models found in {checkpoint_dir}/")
+            print("   Starting with untrained agent")
         
         # Training statistics
         episode_rewards = []
@@ -413,6 +461,13 @@ def train(args):
         agent.save_models()
         agent.replay_buffer.save(f'{pkl_dir}/replay_buffer_final_{timestamp}.pkl')
         print(f"\n💾 Final model saved")
+        
+        # Final cleanup - keep only best and final buffers, clean periodic ones
+        cleanup_old_files(pkl_dir, "replay_buffer_ep*.pkl", MAX_BUFFER_FILES)
+        cleanup_old_files(pkl_dir, "replay_buffer_best*.pkl", 1)  # Keep only 1 best
+        cleanup_old_files(pkl_dir, "replay_buffer_final*.pkl", 1)  # Keep only 1 final
+        print(f"🧹 Cleaned up old buffer files")
+        
         print(f"\n✅ Training complete! Trained for {args.episodes} episodes.")
         
     except KeyboardInterrupt:
@@ -687,9 +742,13 @@ def main():
         import subprocess
         print("\n🎮 Starting Manual Test Mode...")
         print("=" * 70)
-        subprocess.run(['python3', 'control_robot.py'], cwd=os.path.dirname(__file__))
+        script_path = os.path.join(os.path.dirname(__file__), 'control_robot.py')
+        if os.path.exists(script_path):
+            subprocess.run(['python3', script_path])
+        else:
+            print(f"❌ control_robot.py not found at {script_path}")
         print("\n" + "=" * 70)
-        print("Manual test mode exited. Returning to menu...")
+        print("Manual test mode exited.")
         print("=" * 70)
         return  # Exit after manual mode
     elif choice == '2':

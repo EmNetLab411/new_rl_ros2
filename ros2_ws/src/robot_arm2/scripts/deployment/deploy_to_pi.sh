@@ -10,29 +10,32 @@ PI_USER="pi"
 PI_HOST="192.168.11.1"  # ⚠️ CHANGE THIS to your Pi's actual IP address!
 PI_RL_DIR="/home/pi/rl_deployment"
 
-# Model configuration (ONNX preferred, much smaller than TFLite)
-ONNX_MODEL="checkpoints/sac_gazebo/actor_sac_best.onnx"
+# Model configuration (TFLite preferred - smaller and faster on Pi)
+TFLITE_MODEL="checkpoints/sac_gazebo/actor_sac_best.tflite"
 SCRIPTS_DIR="ros2_ws/src/robot_arm2/scripts"
 
 echo ""
 echo "📋 Deployment Configuration:"
 echo "   Target: ${PI_USER}@${PI_HOST}"
 echo "   RL Directory: ${PI_RL_DIR}"
-echo "   Model: ${ONNX_MODEL}"
+echo "   Model: ${TFLITE_MODEL}"
 echo ""
 
-# Check if ONNX model exists
-if [ ! -f "${ONNX_MODEL}" ]; then
-    echo "❌ ERROR: ONNX model not found at ${ONNX_MODEL}"
+# Check if TFLite model exists
+if [ ! -f "${TFLITE_MODEL}" ]; then
+    echo "❌ ERROR: TFLite model not found at ${TFLITE_MODEL}"
     echo ""
     echo "📝 Please export your trained model first:"
     echo "   cd ${SCRIPTS_DIR}/deployment"
-    echo "   python3 export_model.py --model ../checkpoints/sac_gazebo/actor_sac_best.pth"
+    echo "   python3 export_model.py --model ../checkpoints/sac_gazebo/actor_sac_best.pth --format tflite"
+    echo ""
+    echo "   Or with quantization (smaller size):"
+    echo "   python3 export_model.py --model ../checkpoints/sac_gazebo/actor_sac_best.pth --format tflite --quantize"
     echo ""
     exit 1
 fi
 
-echo "✅ ONNX model found ($(du -h ${ONNX_MODEL} | cut -f1))"
+echo "✅ TFLite model found ($(du -h ${TFLITE_MODEL} | cut -f1))"
 
 # ========================================================================
 # Part 1: Deploy RL Model and Scripts
@@ -60,10 +63,10 @@ echo ""
 echo "📁 Creating RL deployment directory on Pi..."
 ssh ${PI_USER}@${PI_HOST} "mkdir -p ${PI_RL_DIR}"
 
-# Copy ONNX model
+# Copy TFLite model
 echo ""
-echo "📦 Copying ONNX model..."
-scp "${ONNX_MODEL}" ${PI_USER}@${PI_HOST}:${PI_RL_DIR}/
+echo "📦 Copying TFLite model..."
+scp "${TFLITE_MODEL}" ${PI_USER}@${PI_HOST}:${PI_RL_DIR}/
 
 # Copy deployment scripts
 echo ""
@@ -95,8 +98,8 @@ echo "📦 Part 2: Installing Dependencies on Pi"
 echo "========================================================================"
 
 echo ""
-echo "📦 Installing onnxruntime on Pi (if not present)..."
-ssh ${PI_USER}@${PI_HOST} "pip3 install --quiet onnxruntime 2>/dev/null || echo 'onnxruntime may already be installed'"
+echo "📦 Installing tflite-runtime on Pi (if not present)..."
+ssh ${PI_USER}@${PI_HOST} "pip3 install --quiet tflite-runtime 2>/dev/null || echo 'tflite-runtime may already be installed'"
 
 echo ""
 echo "📦 Installing servo libraries on Pi (if not present)..."
@@ -114,7 +117,7 @@ echo "✅ Deployment Complete!"
 echo "========================================================================"
 echo ""
 echo "📝 Files deployed to Pi (${PI_RL_DIR}):"
-echo "   ✓ $(basename ${ONNX_MODEL})"
+echo "   ✓ $(basename ${TFLITE_MODEL})"
 echo "   ✓ deploy_on_pi.py"
 echo "   ✓ pi_servo_interface.py"
 echo ""
@@ -128,7 +131,7 @@ echo "    python3 pi_servo_interface.py"
 echo ""
 echo "  Terminal 2 (RL Deployment):"
 echo "    cd ~/rl_deployment"
-echo "    python3 deploy_on_pi.py --model $(basename ${ONNX_MODEL})"
+echo "    python3 deploy_on_pi.py --model $(basename ${TFLITE_MODEL})"
 echo ""
 echo "  Options:"
 echo "    --target 0.15 0.0 0.30    # Custom target position (x y z)"
@@ -136,3 +139,4 @@ echo "    --episodes 5              # Number of episodes"
 echo "    --steps 100               # Max steps per episode"
 echo ""
 echo "========================================================================"
+

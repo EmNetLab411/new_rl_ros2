@@ -148,21 +148,12 @@
     </model>
 
     <!-- Include Drawing Surface Model (3D Workspace Visualization) -->
-    <!-- X=±12cm, Y=-40 to -15cm, Z=18-42cm -->
+    <!-- UPDATED workspace: X=±24cm, Y=-35 to -5cm, Z=8-40cm -->
     <include>
       <uri>model://drawing_surface</uri>
       <name>drawing_surface</name>
       <pose>0 0 0 0 0 0</pose>  <!-- Model has its own positioning -->
     </include>
-
-    <!-- Workspace Visualization Box (transparent, no collision) -->
-    <!-- TODO: Add workspace_box to CMakeLists.txt models if you want visualization
-    <include>
-      <uri>model://workspace_box</uri>
-      <name>workspace_box</name>
-      <pose>0 0 0 0 0 0</pose>
-    </include>
-    -->
 
     <!-- Target Sphere Model - Static (visual randomization on hold) -->
     <model name="target_sphere">

@@ -22,10 +22,10 @@ A complete ROS2 workspace for training a 6-DOF robot arm with reinforcement lear
 
 | Component | Description |
 |-----------|-------------|
-| **State** | 18D: joints(6), robot_xyz(3), target_xyz(3), dist(4), vel(2) |
-| **Action** | 6D: joint angle deltas (±0.1 rad per step) |
+| **State** | 16D: joints(6), robot_xyz(3), target_xyz(3), dist(4) |
+| **Action** | 6D: absolute joint angles (±90° / ±1.57 rad) |
 | **Control** | Direct joint control (no IK computation) |
-| **Workspace** | 3D: X±12cm, Y=-40 to -15cm, Z=18-42cm |
+| **Workspace** | 3D: X±24cm, Y=-35 to -5cm, Z=8-40cm |
 
 ### Quick Start
 
@@ -47,7 +47,7 @@ python3 train_robot.py
 ======================================================================
 🎮 TRAINING MENU
 ======================================================================
-1. Manual Test Mode
+1. Manual Test Mode (control_robot.py)
 2. RL Training Mode (TD3)
 3. RL Training Mode (SAC)
 ======================================================================
@@ -58,7 +58,7 @@ python3 train_robot.py
 Saved to `scripts/training_results/`:
 - **png/**: Training plots (rewards, success rate, distance, losses)
 - **csv/**: Episode-by-episode metrics
-- **pkl/**: Replay buffers for training continuation
+- **pkl/**: Replay buffers (auto-cleaned, keeps best/final)
 
 ## 🍓 Raspberry Pi Deployment
 
@@ -74,14 +74,17 @@ cd ros2_ws/src/robot_arm2/scripts/deployment
 ### Manual Deployment
 
 ```bash
-# 1. Export model to ONNX (8KB, optimized)
-python3 export_model.py --model ../checkpoints/sac_gazebo/actor_sac_best.pth
+# 1. Export model to TFLite
+python3 export_tflite.py --model ../checkpoints/sac_gazebo/actor_sac_best.pth
+
+# Or with quantization for smaller size (~4x reduction)
+python3 export_tflite.py --model ../checkpoints/sac_gazebo/actor_sac_best.pth --quantize
 
 # 2. Copy to Pi
-scp ../checkpoints/sac_gazebo/actor_sac_best.onnx pi@<pi_ip>:~/rl_deployment/
+scp ../checkpoints/sac_gazebo/actor_sac_best.tflite pi@<pi_ip>:~/rl_deployment/
 
 # 3. Run on Pi
-python3 deploy_on_pi.py --model actor_sac_best.onnx
+python3 deploy_on_pi.py --model actor_sac_best.tflite
 ```
 
 ### Deployment Files
@@ -89,9 +92,9 @@ python3 deploy_on_pi.py --model actor_sac_best.onnx
 | File | Purpose |
 |------|---------|
 | `deploy_to_pi.sh` | One-command deployment via SSH |
-| `export_model.py` | Convert PyTorch → ONNX |
+| `export_tflite.py` | Convert PyTorch → TFLite |
 | `pi_servo_interface.py` | PCA9685 servo control node |
-| `deploy_on_pi.py` | Run ONNX model on Pi |
+| `deploy_on_pi.py` | Run TFLite model on Pi |
 
 ## 🔧 Prerequisites
 
@@ -108,8 +111,7 @@ sudo apt install ros-humble-ros2-control ros-humble-ros2-controllers
 sudo apt install ros-humble-xacro python3-colcon-common-extensions
 
 # Python ML dependencies
-pip install torch numpy matplotlib pandas
-pip install onnx onnxruntime  # For model export
+pip install torch numpy matplotlib pandas tensorflow
 ```
 
 ## 📦 Installation
@@ -130,15 +132,16 @@ new_rl_ros2/ros2_ws/src/robot_arm2/
 │   ├── rl_training.launch.py    # Main RL training launch
 │   └── display.launch.py        # RViz visualization
 ├── meshes/               # Robot STL mesh files
-├── models/               # Gazebo models (target_sphere, workspace)
+├── models/               # Gazebo models (target_sphere, drawing_surface)
 ├── scripts/
 │   ├── train_robot.py           # ⭐ Main training script
+│   ├── control_robot.py         # 🎮 Manual control script
 │   ├── target_manager.py        # Visual target teleportation
 │   ├── agents/                  # TD3 and SAC implementations
 │   ├── rl/                      # Environment and utilities
 │   ├── deployment/              # 🍓 Pi deployment scripts
 │   │   ├── deploy_to_pi.sh      # One-command deploy
-│   │   ├── export_model.py      # PyTorch → ONNX
+│   │   ├── export_tflite.py     # PyTorch → TFLite
 │   │   ├── pi_servo_interface.py
 │   │   └── deploy_on_pi.py
 │   ├── checkpoints/             # Saved model weights
