@@ -19,7 +19,7 @@ class TargetManager(Node):
     def __init__(self):
         super().__init__('target_manager')
         
-        self.current_position = [0.0, -0.30, 0.30]
+        self.current_position = [0.0, 0.225, 0.22]  # Center of +Y workspace
         self.world_name = "rl_training_world"
         
         # Subscribe to target position updates from RL environment

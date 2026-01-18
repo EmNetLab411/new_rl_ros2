@@ -24,6 +24,28 @@ import torch.optim as optim
 from torch.distributions import Normal
 
 
+# ============================================================================
+# SAC HYPERPARAMETERS & CONFIGURATION
+# ============================================================================
+
+# Learning rates
+SAC_ACTOR_LR = 3e-4
+SAC_CRITIC_LR = 3e-4
+SAC_ALPHA_LR = 3e-4         # Temperature parameter learning rate
+
+# Discount and update rates
+SAC_GAMMA = 0.99
+SAC_TAU = 0.005
+
+# SAC-specific: Entropy regularization
+SAC_ALPHA = 0.2             # Initial temperature for entropy regularization
+SAC_AUTO_ENTROPY_TUNING = True  # Automatically adjust alpha
+
+# Replay buffer and batch size
+SAC_BUFFER_SIZE = int(1e6)
+SAC_BATCH_SIZE = 256
+
+
 def _to_tensor(x, device):
     return torch.tensor(x, dtype=torch.float32, device=device)
 
@@ -241,8 +263,9 @@ class SACAgentGazebo:
         
         # Entropy temperature (alpha)
         if auto_entropy_tuning:
-            # Target entropy is -dim(A) (heuristic from SAC paper)
-            self.target_entropy = -torch.tensor(n_actions, dtype=torch.float32, device=self.device)
+            # Target entropy: -dim(A) * 0.5 for MORE exploration (breaks plateau)
+            # Standard SAC uses -dim(A), but lower target = higher entropy maintained
+            self.target_entropy = -torch.tensor(n_actions * 0.5, dtype=torch.float32, device=self.device)
             self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
             self.alpha = self.log_alpha.exp().item()
             self.alpha_optimizer = optim.Adam([self.log_alpha], lr=alpha_lr)

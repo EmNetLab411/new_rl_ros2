@@ -148,24 +148,24 @@
     </model>
 
     <!-- Include Drawing Surface Model (3D Workspace Visualization) -->
-    <!-- UPDATED workspace: X=±24cm, Y=-35 to -5cm, Z=8-40cm -->
+    <!-- NARROWED workspace (12x15x12 cm): X=±6cm, Y=-30 to -15cm, Z=16-28cm -->
     <include>
       <uri>model://drawing_surface</uri>
       <name>drawing_surface</name>
       <pose>0 0 0 0 0 0</pose>  <!-- Model has its own positioning -->
     </include>
 
-    <!-- Target Sphere Model - Static (visual randomization on hold) -->
+    <!-- Target Sphere Model - Initial position at center of workspace -->
     <model name="target_sphere">
       <static>true</static>
-      <pose>0 -0.3 0.3 0 0 0</pose>
+      <pose>0 0.225 0.22 0 0 0</pose>  <!-- Center of +Y workspace -->
       
       <link name="sphere_link">
         <pose>0 0 0 0 0 0</pose>
         <visual name="visual">
           <geometry>
             <sphere>
-              <radius>0.01</radius>
+              <radius>0.0075</radius>
             </sphere>
           </geometry>
           <material>

@@ -162,6 +162,6 @@ def generate_launch_description():
         joint_state_broadcaster_spawner,
         arm_controller_spawner,
         target_manager,  # Teleports target sphere during training
-        # gazebo_visualizer removed - reaching only, no triangle/pen path
+        gazebo_visualizer,  # Spawns triangle and draws pen path in Gazebo
     ])
 

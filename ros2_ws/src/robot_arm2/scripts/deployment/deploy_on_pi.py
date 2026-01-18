@@ -107,13 +107,13 @@ JOINT_LIMITS = np.array([
     [-1.5708, 1.5708],  # Joint 6: ±90°
 ])
 
-# Workspace bounds (meters) - matches training (UPDATED)
-WORKSPACE_X = (-0.24, 0.24)   # ±24cm
-WORKSPACE_Y = (-0.35, -0.05)  # -35cm to -5cm (in front of robot)
-WORKSPACE_Z = (0.08, 0.40)    # 8-40cm
+# Workspace bounds (meters) - matches training (UPDATED for 12x15x12 cm)
+WORKSPACE_X = (-0.06, 0.06)   # ±6cm
+WORKSPACE_Y = (-0.30, -0.15)  # -30cm to -15cm (in front of robot)
+WORKSPACE_Z = (0.16, 0.28)    # 16-28cm
 
 # Default target position (center of workspace)
-DEFAULT_TARGET = np.array([0.0, -0.20, 0.24])  # Center of workspace
+DEFAULT_TARGET = np.array([0.0, -0.225, 0.22])  # Center of 12x15x12 cm workspace
 
 # Goal threshold for success
 GOAL_THRESHOLD = 0.01  # 1cm

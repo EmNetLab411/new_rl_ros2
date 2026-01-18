@@ -57,15 +57,21 @@ except ImportError:
 #
 # Note: Robot faces -Y direction (toward drawing surface)
 
-SURFACE_X_MIN = -0.24  # -24cm (symmetric, 5-95% safe)
-SURFACE_X_MAX = 0.24   # +24cm (symmetric)
-SURFACE_Y_MIN = -0.35  # -35cm (max forward reach)
-SURFACE_Y_MAX = -0.05  # -5cm (close to robot but not too close)
-SURFACE_Z_MIN = 0.08   # 8cm (avoid ground collision)
-SURFACE_Z_MAX = 0.40   # 40cm (within reachable height)
+# NARROWED WORKSPACE (12x15x12 cm) - for focused learning
+# Phase 1: Start very small, expand later for curriculum learning
+# SWITCHED TO +Y AXIS (robot reaches forward)
+# Original -Y workspace commented out:
+#   SURFACE_Y_MIN = -0.30, SURFACE_Y_MAX = -0.15
+
+SURFACE_X_MIN = -0.06  # -6cm
+SURFACE_X_MAX = 0.06   # +6cm  → 12cm width (X)
+SURFACE_Y_MIN = 0.15   # +15cm (was -30cm)
+SURFACE_Y_MAX = 0.30   # +30cm (was -15cm) → 15cm depth (Y)
+SURFACE_Z_MIN = 0.16   # 16cm
+SURFACE_Z_MAX = 0.28   # 28cm  → 12cm height (Z)
 
 # Target sphere radius (for border margin calculation)
-TARGET_RADIUS = 0.01  # 1cm radius
+TARGET_RADIUS = 0.0075  # 0.75cm radius (tighter threshold)
 
 # Workspace boundaries for target spawning (with 1cm margin from borders)
 # This ensures the 1cm radius target sphere stays fully within the workspace
@@ -296,10 +302,29 @@ class RLEnvironment(Node):
                 timeout=rclpy.duration.Duration(seconds=0, nanoseconds=100000000)  # 0.1s timeout
             )
             
-            # Extract position
+            # Extract position from TF
             self.robot_x = transform.transform.translation.x
             self.robot_y = transform.transform.translation.y
             self.robot_z = transform.transform.translation.z
+            
+            # DEBUG: Compare with FK calculation
+            try:
+                from rl.fk_ik_utils import fk
+                fk_pos = fk(self.joint_positions)
+                diff = np.sqrt(
+                    (fk_pos[0] - self.robot_x)**2 +
+                    (fk_pos[1] - self.robot_y)**2 +
+                    (fk_pos[2] - self.robot_z)**2
+                )
+                if diff > 0.01:  # Log only if difference > 1cm
+                    self.get_logger().warn(
+                        f"FK vs TF diff: {diff*100:.2f}cm | "
+                        f"FK=({fk_pos[0]:.3f},{fk_pos[1]:.3f},{fk_pos[2]:.3f}) | "
+                        f"TF=({self.robot_x:.3f},{self.robot_y:.3f},{self.robot_z:.3f})",
+                        throttle_duration_sec=2.0
+                    )
+            except Exception as fk_error:
+                self.get_logger().debug(f"FK debug error: {fk_error}", throttle_duration_sec=10.0)
             
         except Exception as e:
             # TF not available - log occasionally
@@ -486,13 +511,18 @@ class RLEnvironment(Node):
         """
         Calculate reward based on distance to goal
         
-        NEW Reward Structure:
-        - Goal reached (dist < 1cm): +10.0, episode done
-        - Distance penalty: -5.0 * distance (encourages staying close)
-        - Improvement bonus: +10.0 * improvement (closer = reward)
-        - Moving away penalty: 2× (10.0 * improvement * 2.0)
-        - Step penalty: -0.5
-        - Clipped to [-10, +10] to prevent explosion
+        IMPROVED Reward Structure (Combined Reference + Neural IK considerations):
+        
+        ACTIVE Components:
+        - Goal reached (dist < 1cm): +100.0, episode done (strong success signal)
+        - Distance penalty: -dist_after (linear, consistent gradient)
+        - Improvement bonus: +5.0 * improvement (reward getting closer)
+        - Step penalty: -0.01 (small, doesn't block exploration)
+        - Clipped to [-50, +50] (wider range so success stands out)
+        
+        FUTURE Components (for Neural IK smoothness - uncomment when needed):
+        - Action smoothness: -0.05 * ||action||² (prevent wild movements)
+        - Joint stability: -0.02 * ||Δjoints||² (prevent elbow flips)
         
         Args:
             dist_after: Distance to goal after action
@@ -503,75 +533,17 @@ class RLEnvironment(Node):
         """
         done = False
         
-        # Goal reached (1cm = radius of target sphere)
+        # ===== SPARSE REWARD (GitHub style) =====
+        # 0 for success, -1 for failure
+        # Let HER do the heavy lifting
         if dist_after < self.goal_tolerance:  # 0.01m = 1cm
-            reward = 10.0
+            reward = 0.0   # Success (sparse)
             done = True
             self.get_logger().info(f"🎯 Goal reached! Distance: {dist_after*1000:.1f}mm")
         else:
-            # Distance penalty (negative, proportional to distance)
-            dist_reward = -5.0 * dist_after
-            
-            # Improvement reward (asymmetric: 2× penalty for moving away)
-            improvement = dist_before - dist_after
-            if improvement >= 0:
-                # Getting closer - positive reward
-                improve_reward = 10.0 * improvement
-            else:
-                # Moving away - 2× penalty (harsher punishment)
-                improve_reward = 10.0 * improvement * 2.0
-            
-            # Step penalty
-            step_penalty = 0.5
-            
-            # Combine all components
-            reward = dist_reward + improve_reward - step_penalty
-            
-            # Clip to prevent reward explosion
-            reward = np.clip(reward, -10.0, 10.0)
+            reward = -1.0  # Failure (sparse)
         
         return reward, done
-    
-    def _execute_target_action(self, target_x: float, target_z: float) -> Tuple[bool, bool, float]:
-        """
-        Execute target-based action with IK
-        
-        Args:
-            target_x: Target X position in meters
-            target_z: Target Z position in meters
-        
-        Returns:
-            Tuple of (execution_success, ik_success, ik_error)
-        """
-        # Compute IK for target position (uses all 6 joints)
-        from .fk_ik_utils import constrained_ik_6dof
-        
-        try:
-            joint_angles, ik_success, ik_error = constrained_ik_6dof(
-                target_y=self.target_y,  # Use current target Y
-                target_z=target_z,
-                target_x=target_x,
-                initial_guess=self.joint_positions,  # Warm start from current position
-                tolerance=0.005  # 5mm tolerance
-            )
-            
-            # Update IK success flag for state
-            self.last_ik_success = 1.0 if ik_success else 0.0
-            
-            # CRITICAL: Move robot even if IK "failed" (error > tolerance)
-            # The IK solution is still the best we can do, so execute it
-            if ik_error < 0.2:  # Only reject if error is huge (>20cm)
-                execution_success = self._move_to_joint_positions(joint_angles, duration=1.0)
-                if not ik_success:
-                    self.get_logger().warn(f"IK error {ik_error*1000:.1f}mm > tolerance, but moving anyway")
-                return execution_success, ik_success, ik_error
-            else:
-                self.get_logger().error(f"IK error too large: {ik_error*1000:.1f}mm - not moving")
-                return False, False, ik_error
-                
-        except Exception as e:
-            self.get_logger().error(f"IK solver error: {e}")
-            return False, False, float('inf')
     
     def _move_to_joint_positions(self, target_positions: np.ndarray, duration: float = 0.5) -> bool:
         """

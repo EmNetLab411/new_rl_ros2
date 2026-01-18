@@ -30,6 +30,8 @@ install(DIRECTORY meshes urdf launch config worlds scripts models
 # Install executable scripts to lib for launch file access
 install(PROGRAMS
   scripts/target_manager.py
+  scripts/drawing/line_visualizer.py
+  scripts/drawing/gazebo_visualizer.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

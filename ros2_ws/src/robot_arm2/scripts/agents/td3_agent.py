@@ -21,6 +21,27 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 
+# ============================================================================
+# TD3 HYPERPARAMETERS & CONFIGURATION
+# ============================================================================
+
+# Learning rates
+TD3_ACTOR_LR = 3e-4
+TD3_CRITIC_LR = 3e-4
+
+# Discount and update rates
+TD3_GAMMA = 0.99
+TD3_TAU = 0.005
+
+# TD3-specific: Policy smoothing and delayed updates
+TD3_POLICY_NOISE = 0.2      # Noise added to target policy during critic update
+TD3_NOISE_CLIP = 0.5        # Range to clip target policy noise
+TD3_POLICY_DELAY = 2        # Delay between policy updates (update every N iterations)
+
+# Replay buffer and batch size
+TD3_BUFFER_SIZE = int(1e6)
+TD3_BATCH_SIZE = 256
+
 def _to_tensor(x, device):
     """Convert numpy array to torch tensor"""
     return torch.tensor(x, dtype=torch.float32, device=device)
@@ -162,15 +183,15 @@ class TD3Agent:
         action_dim,
         max_action=1.0,
         min_action=-1.0,
-        actor_lr=1e-4,
-        critic_lr=1e-3,
-        gamma=0.98,
-        tau=0.001,
-        policy_noise=0.2,
-        noise_clip=0.5,
-        policy_delay=2,
-        buffer_size=int(1e6),
-        batch_size=256,
+        actor_lr=TD3_ACTOR_LR,
+        critic_lr=TD3_CRITIC_LR,
+        gamma=TD3_GAMMA,
+        tau=TD3_TAU,
+        policy_noise=TD3_POLICY_NOISE,
+        noise_clip=TD3_NOISE_CLIP,
+        policy_delay=TD3_POLICY_DELAY,
+        buffer_size=TD3_BUFFER_SIZE,
+        batch_size=TD3_BATCH_SIZE,
         device=None,
         seed=0,
     ):
