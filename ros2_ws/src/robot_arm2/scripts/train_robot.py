@@ -39,7 +39,7 @@ NUM_EPISODES = 1000
 MAX_STEPS_PER_EPISODE = 10
 LEARNING_STARTS = 10  # Start training after this many episodes
 
-# Training settings (GitHub style)
+# Training settings 
 OPT_STEPS_PER_EPISODE = 64  # GitHub: 64 gradient updates per episode
 SAVE_INTERVAL = 25  # Save models every N episodes
 EVAL_INTERVAL = 10  # Evaluate (without noise) every N episodes
@@ -364,6 +364,7 @@ def train(args):
             episode_rewards = previous_results.get('episode_rewards', [])
             episode_successes = previous_results.get('episode_successes', [])
             episode_min_distances = previous_results.get('episode_min_distances', [])
+            episode_steps = previous_results.get('episode_steps', [])
             actor_losses = previous_results.get('actor_losses', [])
             critic_losses = previous_results.get('critic_losses', [])
             
@@ -386,6 +387,7 @@ def train(args):
             episode_rewards = []
             episode_successes = []
             episode_min_distances = []
+            episode_steps = []  # Track steps per episode
             actor_losses = []
             critic_losses = []
             best_min_distance = float('inf')
@@ -477,8 +479,8 @@ def train(args):
                 
                 if neural_ik is not None:
                     # NARROWED TASK WORKSPACE (12x15x12 cm)
-                    TASK_POS_MIN = np.array([-0.06, -0.30, 0.16])  # X±6, Y-30to-15, Z16to28
-                    TASK_POS_MAX = np.array([0.06, -0.15, 0.28])   # 12x15x12 cm
+                    TASK_POS_MIN = np.array([-0.06, 0.15, 0.16])  # X±6, Y+15to+30, Z16to28
+                    TASK_POS_MAX = np.array([0.06, 0.30, 0.28])   # 12x15x12 cm (+Y Workspace)
                     
                     # ======= RESIDUAL RL: PID + SAC =======
                     if pid_controller is not None and ee_pos_before is not None and target_pos is not None:
@@ -600,6 +602,7 @@ def train(args):
             episode_rewards.append(episode_reward)
             episode_successes.append(1.0 if episode_success else 0.0)
             episode_min_distances.append(min_distance)  # Track min distance
+            episode_steps.append(step + 1)  # Track steps per episode
             
             # Calculate statistics (ALL episodes, not just last 10)
             avg_reward = np.mean(episode_rewards)
@@ -680,7 +683,7 @@ def train(args):
         # Create mode suffix for filenames (e.g., 'sac_neuralIK' or 'td3_direct')
         mode_suffix = f"{args.agent}{'_neuralIK' if use_neural_ik else '_direct'}"
         plot_training_stats(episode_rewards, episode_successes, episode_min_distances, 
-                           actor_losses, critic_losses, png_dir, csv_dir, timestamp, mode_suffix)
+                           actor_losses, critic_losses, png_dir, csv_dir, timestamp, mode_suffix, episode_steps)
         
         # Save final model
         agent.save_models()
@@ -735,8 +738,12 @@ def train(args):
                 pass  # Ignore shutdown errors (RCL context already shutdown)
 
 
-def plot_training_stats(episode_rewards, episode_successes, episode_min_distances, actor_losses, critic_losses, png_dir, csv_dir, timestamp, mode_suffix=''):
-    """Plot training statistics with cumulative moving averages including distance"""
+def plot_training_stats(episode_rewards, episode_successes, episode_min_distances, actor_losses, critic_losses, png_dir, csv_dir, timestamp, mode_suffix='', episode_steps=None):
+    """Plot training statistics with cumulative moving averages including distance
+    
+    Args:
+        episode_steps: List of steps per episode (optional, for steps-to-reach graph)
+    """
     episodes = np.arange(1, len(episode_rewards) + 1)
     
     # Calculate cumulative average (tracks all episodes up to current point)
@@ -751,7 +758,10 @@ def plot_training_stats(episode_rewards, episode_successes, episode_min_distance
     distances_cm = [d * 100 for d in episode_min_distances]
     distance_avg_cm = [d * 100 for d in distance_avg]
     
-    # Create figure with 3x2 subplots
+    # Calculate steps average if available
+    steps_avg = cumulative_avg(episode_steps) if episode_steps else None
+    
+    # Create figure with 2x3 subplots
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     # Title with mode info
     title = f'Training Statistics - {mode_suffix.upper().replace("_", " + ")}' if mode_suffix else 'Training Statistics'
@@ -767,63 +777,79 @@ def plot_training_stats(episode_rewards, episode_successes, episode_min_distance
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
     
-    # Plot 2: Success Rate (top-center)
+    # Plot 2: Success Rate with X/O markers (top-center)
     ax = axes[0, 1]
-    success_pct = np.array(episode_successes) * 100
-    success_avg_pct = np.array(success_avg) * 100
-    ax.plot(episodes, success_pct, alpha=0.3, color='green', linewidth=1.5, label='Episode Success')
-    ax.plot(episodes, success_avg_pct, color='darkgreen', linewidth=3.0, label='Cumulative Average')
+    success_pct = np.array(success_avg) * 100
+    
+    # Separate success and fail episodes
+    success_eps = [ep for ep, s in zip(episodes, episode_successes) if s == 1]
+    fail_eps = [ep for ep, s in zip(episodes, episode_successes) if s == 0]
+    success_y = [100 for _ in success_eps]  # Success at 100%
+    fail_y = [0 for _ in fail_eps]  # Fail at 0%
+    
+    # Plot O for success, X for fail
+    ax.scatter(success_eps, success_y, marker='o', color='green', s=30, alpha=0.6, label='Success')
+    ax.scatter(fail_eps, fail_y, marker='x', color='red', s=30, alpha=0.6, label='Fail')
+    # Moving average line
+    ax.plot(episodes, success_pct, color='darkgreen', linewidth=3.0, label='20-Ep Average')
     ax.set_xlabel('Episode', fontsize=12)
-    ax.set_ylabel('Success Rate (%)', fontsize=12)
-    ax.set_title('Success Rate', fontsize=14, fontweight='bold')
-    ax.set_ylim([0, 105])
+    ax.set_ylabel('Success (1) / Fail (0)', fontsize=12)
+    ax.set_title('Episode Success/Fail with Moving Average', fontsize=14, fontweight='bold')
+    ax.set_ylim([-5, 105])
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
     
-    # Plot 3: Min Distance to Target (top-right) - NEW!
+    # Plot 3: Min Distance to Target (top-right)
     ax = axes[0, 2]
     ax.plot(episodes, distances_cm, alpha=0.3, color='orange', linewidth=1.5, label='Episode Min Distance')
     ax.plot(episodes, distance_avg_cm, color='darkorange', linewidth=3.0, label='Cumulative Average')
-    ax.axhline(y=1.0, color='red', linestyle='--', linewidth=2, label='Goal (1cm)')
+    ax.axhline(y=0.75, color='red', linestyle='--', linewidth=2, label='Goal (0.75cm)')
     ax.set_xlabel('Episode', fontsize=12)
     ax.set_ylabel('Distance (cm)', fontsize=12)
     ax.set_title('Min Distance to Target', fontsize=14, fontweight='bold')
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
     
-    # Plot 4: Actor Loss (bottom-left)
+    # Plot 4: Combined Training Losses (bottom-left)
     ax = axes[1, 0]
     valid_actor = [(i+1, l) for i, l in enumerate(actor_losses) if l is not None]
+    valid_critic = [(i+1, l) for i, l in enumerate(critic_losses) if l is not None]
+    
     if valid_actor:
         actor_eps, actor_vals = zip(*valid_actor)
-        ax.plot(actor_eps, actor_vals, color='red', linewidth=2.5, label='Actor Loss')
-        ax.set_xlabel('Episode', fontsize=12)
-        ax.set_ylabel('Loss', fontsize=12)
-        ax.set_title('Actor Loss', fontsize=14, fontweight='bold')
-        ax.legend(fontsize=10)
-        ax.grid(True, alpha=0.3)
-    else:
-        ax.text(0.5, 0.5, 'No Actor Loss Data', ha='center', va='center', fontsize=12)
-        ax.set_title('Actor Loss', fontsize=14, fontweight='bold')
-    
-    # Plot 5: Critic Loss (bottom-center)
-    ax = axes[1, 1]
-    valid_critic = [(i+1, l) for i, l in enumerate(critic_losses) if l is not None]
+        ax.plot(actor_eps, actor_vals, color='blue', linewidth=1.5, alpha=0.8, label='Actor Loss')
     if valid_critic:
         critic_eps, critic_vals = zip(*valid_critic)
-        ax.plot(critic_eps, critic_vals, color='purple', linewidth=2.5, label='Critic Loss')
+        ax.plot(critic_eps, critic_vals, color='orange', linewidth=1.5, alpha=0.8, label='Critic Loss')
+    
+    if valid_actor or valid_critic:
         ax.set_xlabel('Episode', fontsize=12)
         ax.set_ylabel('Loss', fontsize=12)
-        ax.set_title('Critic Loss', fontsize=14, fontweight='bold')
+        ax.set_title('Training Losses', fontsize=14, fontweight='bold')
         ax.legend(fontsize=10)
         ax.grid(True, alpha=0.3)
     else:
-        ax.text(0.5, 0.5, 'No Critic Loss Data', ha='center', va='center', fontsize=12)
-        ax.set_title('Critic Loss', fontsize=14, fontweight='bold')
+        ax.text(0.5, 0.5, 'No Loss Data', ha='center', va='center', fontsize=12)
+        ax.set_title('Training Losses', fontsize=14, fontweight='bold')
+    
+    # Plot 5: Steps to Reach Target (bottom-center)
+    ax = axes[1, 1]
+    if episode_steps and len(episode_steps) > 0:
+        ax.plot(episodes[:len(episode_steps)], episode_steps, alpha=0.3, color='purple', linewidth=1.5, label='Steps per Episode')
+        ax.plot(episodes[:len(steps_avg)], steps_avg, color='darkviolet', linewidth=3.0, label='Cumulative Average')
+        ax.set_xlabel('Episode', fontsize=12)
+        ax.set_ylabel('Steps', fontsize=12)
+        ax.set_title('Steps to Reach Target', fontsize=14, fontweight='bold')
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3)
+    else:
+        ax.text(0.5, 0.5, 'No Steps Data', ha='center', va='center', fontsize=12)
+        ax.set_title('Steps to Reach Target', fontsize=14, fontweight='bold')
     
     # Plot 6: Combined Summary (bottom-right)
     ax = axes[1, 2]
     ax.axis('off')
+    steps_text = f"  • Avg Steps: {np.mean(episode_steps):.1f}" if episode_steps else "  • Avg Steps: N/A"
     summary_text = f"""
 📊 Training Summary
 ━━━━━━━━━━━━━━━━━━━━
@@ -835,11 +861,14 @@ Rewards:
   • Best: {max(episode_rewards):.2f}
 
 Success Rate:
-  • Final: {success_avg_pct[-1]:.1f}%
+  • Final: {success_pct[-1]:.1f}%
 
 Distance to Target:
   • Final Avg: {distance_avg_cm[-1]:.2f}cm
   • Best: {min(distances_cm):.2f}cm
+
+Steps:
+{steps_text}
     """
     ax.text(0.1, 0.5, summary_text, transform=ax.transAxes, fontsize=12,
             verticalalignment='center', fontfamily='monospace',

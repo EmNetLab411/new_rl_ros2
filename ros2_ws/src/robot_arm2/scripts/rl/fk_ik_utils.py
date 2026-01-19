@@ -15,7 +15,7 @@ JOINT_TRANSFORMS = [
     {'xyz': np.array([0.041821, -0.019984, 0.053522]), 'axis': np.array([-1, 0, 0])},
     # Joint 3: Link2_1 → Link3_1 (continuous, +X-axis after flip)
     {'xyz': np.array([-0.075886, -7e-06, 0.116723]), 'axis': np.array([1, 0, 0])},
-    # Joint 4: Link3_1 → Link4_1 (revolute ±90°, Y-axis negative)
+    # Joint 4: Link3_1 → Link4_1 (continuous, Y-axis negative)
     {'xyz': np.array([0.032204, 0.031535, 0.062164]), 'axis': np.array([0, -1, 0])},
     # Joint 5: Link4_1 → Link5_1 (continuous, +X-axis after flip)
     {'xyz': np.array([-0.032579, -0.0331, 0.077214]), 'axis': np.array([1, 0, 0])},

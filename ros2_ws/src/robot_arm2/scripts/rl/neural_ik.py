@@ -114,25 +114,25 @@ def fk_batch_torch(joints, device):
     pos = pos + offsets[0].squeeze(-1)  # First offset is just added
     R = R @ rot_z(joints[:, 0])
     
-    # Joint 2: X-axis
+    # Joint 2: -X-axis (flipped)
     pos = pos + apply_offset(R, offsets[1])
-    R = R @ rot_x(joints[:, 1])
+    R = R @ rot_x(-joints[:, 1])  # Axis is [-1, 0, 0]
     
-    # Joint 3: X-axis
+    # Joint 3: +X-axis (flipped)
     pos = pos + apply_offset(R, offsets[2])
-    R = R @ rot_x(joints[:, 2])
+    R = R @ rot_x(joints[:, 2])   # Axis is [1, 0, 0]
     
     # Joint 4: -Y-axis
     pos = pos + apply_offset(R, offsets[3])
-    R = R @ rot_y(-joints[:, 3])
+    R = R @ rot_y(-joints[:, 3])  # Axis is [0, -1, 0]
     
-    # Joint 5: -X-axis
+    # Joint 5: +X-axis (flipped)
     pos = pos + apply_offset(R, offsets[4])
-    R = R @ rot_x(-joints[:, 4])
+    R = R @ rot_x(joints[:, 4])   # Axis is [1, 0, 0]
     
     # Joint 6: -Y-axis
     pos = pos + apply_offset(R, offsets[5])
-    R = R @ rot_y(-joints[:, 5])
+    R = R @ rot_y(-joints[:, 5])  # Axis is [0, -1, 0]
     
     # End-effector offset
     pos = pos + apply_offset(R, ee_offset)
@@ -147,8 +147,9 @@ class NeuralIK:
         self.device = device or (torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'))
         self.model = NeuralIKNetwork().to(self.device)
         
-        self.pos_min = np.array([-0.4, -0.45, 0.0])
-        self.pos_max = np.array([0.4, 0.35, 0.55])
+        # +Y Workspace bounds (updated from -Y)
+        self.pos_min = np.array([-0.4, 0.0, 0.0])    # Y: 0 to 0.4 (+Y workspace)
+        self.pos_max = np.array([0.4, 0.4, 0.55])
         
         print(f"✅ Neural IK v2 (Position Loss) initialized on {self.device}")
     

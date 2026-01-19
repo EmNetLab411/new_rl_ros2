@@ -23,7 +23,7 @@ Usage:
     python3 deploy_on_pi.py --model actor_sac_best.tflite
     
     # With custom target position:
-    python3 deploy_on_pi.py --model actor_sac_best.tflite --target 0.15 -0.20 0.25
+    python3 deploy_on_pi.py --model actor_sac_best.tflite --target 0.15 0.20 0.25
 
 Model Specs:
     - State: 16D (joints(6), robot_xyz(3), target_xyz(3), dist_xyz(3), dist_3d(1))
@@ -107,13 +107,13 @@ JOINT_LIMITS = np.array([
     [-1.5708, 1.5708],  # Joint 6: ±90°
 ])
 
-# Workspace bounds (meters) - matches training (UPDATED for 12x15x12 cm)
+# Workspace bounds (meters) - +Y workspace (12x15x12 cm)
 WORKSPACE_X = (-0.06, 0.06)   # ±6cm
-WORKSPACE_Y = (-0.30, -0.15)  # -30cm to -15cm (in front of robot)
+WORKSPACE_Y = (0.15, 0.30)    # +15cm to +30cm (+Y workspace)
 WORKSPACE_Z = (0.16, 0.28)    # 16-28cm
 
-# Default target position (center of workspace)
-DEFAULT_TARGET = np.array([0.0, -0.225, 0.22])  # Center of 12x15x12 cm workspace
+# Default target position (center of +Y workspace)
+DEFAULT_TARGET = np.array([0.0, 0.225, 0.22])  # Center of 12x15x12 cm +Y workspace
 
 # Goal threshold for success
 GOAL_THRESHOLD = 0.01  # 1cm

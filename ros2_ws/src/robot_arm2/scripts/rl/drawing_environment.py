@@ -81,15 +81,15 @@ class DrawingEnvironment(RLEnvironment):
         self.observation_space = spaces.Box(
             low=np.array(
                 [-np.pi/2]*6 +              # joint positions
-                [-0.50, -0.50, 0.0] +       # EE position
-                [-0.50, -0.50, 0.0] +       # target position
+                [0.0, 0.0, 0.0] +           # EE position (+Y workspace)
+                [0.0, 0.0, 0.0] +           # target position (+Y workspace)
                 [-1.0]*3 +                   # distance components
                 [0.0, 0.0, 0.0]             # dist3d, progress, remaining
             ),
             high=np.array(
                 [np.pi/2]*6 +               # joint positions
-                [0.50, 0.50, 0.60] +        # EE position
-                [0.50, 0.50, 0.60] +        # target position
+                [0.50, 0.50, 0.60] +        # EE position (+Y workspace)
+                [0.50, 0.50, 0.60] +        # target position (+Y workspace)
                 [1.0]*3 +                    # distance components
                 [1.0, 1.0, 30.0]            # dist3d, progress, remaining
             ),

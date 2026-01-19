@@ -35,7 +35,7 @@ SAC_ALPHA_LR = 3e-4         # Temperature parameter learning rate
 
 # Discount and update rates
 SAC_GAMMA = 0.99
-SAC_TAU = 0.005
+SAC_TAU = 0.05  # kaymen99: 0.05 for faster adaptation
 
 # SAC-specific: Entropy regularization
 SAC_ALPHA = 0.2             # Initial temperature for entropy regularization
@@ -191,7 +191,7 @@ class SACAgentGazebo:
         critic_lr=3e-4,
         alpha_lr=3e-4,
         gamma=0.99,
-        tau=0.005,
+        tau=0.05,
         alpha=0.2,
         auto_entropy_tuning=True,
         buffer_size=int(1e6),

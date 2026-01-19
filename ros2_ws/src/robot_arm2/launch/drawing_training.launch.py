@@ -71,7 +71,7 @@ def generate_launch_description():
                 PathJoinSubstitution([
                     FindPackageShare('robot_arm2'),
                     'worlds',
-                    'rl_training.world'
+                    'drawing_training.world'
                 ]),
                 ' -r'
             ]
@@ -161,7 +161,7 @@ def generate_launch_description():
         gz_bridge,  # Bridge for entity spawn/delete
         joint_state_broadcaster_spawner,
         arm_controller_spawner,
-        target_manager,  # Teleports target sphere during training
+        # target_manager removed - not needed for drawing mode
         gazebo_visualizer,  # Spawns triangle and draws pen path in Gazebo
     ])
 

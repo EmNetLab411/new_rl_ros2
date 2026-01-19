@@ -201,12 +201,12 @@
   <limit effort="100" velocity="100"/>
 </joint>
 
-<joint name="Joint 4" type="revolute">
+<joint name="Joint 4" type="continuous">
   <origin xyz="0.032204 0.031535 0.062164" rpy="0 0 0"/>
   <parent link="Link3_1"/>
   <child link="Link4_1"/>
   <axis xyz="0.0 -1.0 0.0"/>
-  <limit upper="1.570796" lower="-1.570796" effort="100" velocity="100"/>
+  <limit effort="100" velocity="100"/>
 </joint>
 
 <joint name="Joint 5" type="continuous">

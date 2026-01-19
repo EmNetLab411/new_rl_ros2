@@ -22,7 +22,7 @@ def her_augmentation(agent, obs_list, actions_list, next_obs_list,
                      achieved_idx=slice(6, 9),   # robot_xyz in 18D state
                      desired_idx=slice(9, 12),   # target_xyz in 18D state
                      goal_threshold=0.01,
-                     success_reward=10.0,
+                     success_reward=0.0,  # kaymen99: pure sparse (0 success, -1 failure)
                      step_reward=-1.0):
     """Augment replay buffer using the 'future' HER strategy.
 
