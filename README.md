@@ -14,6 +14,7 @@ A complete ROS2 workspace for training a 6-DOF robot arm with reinforcement lear
 - ✅ **ros2_control** for position control of all joints
 - ✅ **End-Effector Tracking** using TF2
 - ⭐ **RL Training System** - TD3 and SAC agents with direct joint control
+- ⭐ **Drawing Training** - Learn to draw shapes using Neural IK (3D position control)
 - ⭐ **Pi Deployment** - Export trained models to Raspberry Pi
 
 ## 🤖 RL Training System
@@ -24,8 +25,9 @@ A complete ROS2 workspace for training a 6-DOF robot arm with reinforcement lear
 |-----------|-------------|
 | **State** | 16D: joints(6), robot_xyz(3), target_xyz(3), dist(4) |
 | **Action** | 6D: absolute joint angles (±90° / ±1.57 rad) |
-| **Control** | Direct joint control (no IK computation) |
+| **Control** | Direct joint control (6D) OR Neural IK (3D position) |
 | **Workspace** | 3D: X±24cm, Y=-35 to -5cm, Z=8-40cm |
+| **Drawing** | Fixed Y-plane (Y=0.20m), follow 30-point shape trajectories |
 
 ### Quick Start
 
@@ -48,17 +50,24 @@ python3 train_robot.py
 🎮 TRAINING MENU
 ======================================================================
 1. Manual Test Mode (control_robot.py)
-2. RL Training Mode (TD3)
-3. RL Training Mode (SAC)
+2. Reaching Training (TD3 Direct 6D)
+3. Reaching Training (SAC Direct 6D)
+4. Reaching Training (TD3 + Neural IK 3D)
+5. Reaching Training (SAC + Neural IK 3D)
+6. Train Neural IK Model Only (Supervised)
+7. Drawing Training (SAC Direct 6D)
+8. Drawing Training (SAC + Neural IK 3D)
 ======================================================================
 ```
 
 ### Training Results
 
 Saved to `scripts/training_results/`:
-- **png/**: Training plots (rewards, success rate, distance, losses)
+- **png/**: Training plots
+  - Reaching: Rewards, success rate, distance, losses
+  - Drawing: + Waypoints reached (0-30), shape completion %, trajectory vs target
 - **csv/**: Episode-by-episode metrics
-- **pkl/**: Replay buffers (auto-cleaned, keeps best/final)
+- **pkl/**: Replay buffers (auto-cleaned, keeps best/final) - Separation for Reaching/Drawing modes
 
 ## 🍓 Raspberry Pi Deployment
 
