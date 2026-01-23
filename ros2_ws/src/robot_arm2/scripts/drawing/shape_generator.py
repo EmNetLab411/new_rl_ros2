@@ -61,7 +61,8 @@ class ShapeGenerator:
     
     def equilateral_triangle(self, 
                              size: float = None,
-                             center: Tuple[float, float] = None) -> Shape:
+                             center: Tuple[float, float] = None,
+                             points_per_edge: int = 1) -> Shape:
         """
         Generate equilateral triangle waypoints.
         
@@ -70,9 +71,12 @@ class ShapeGenerator:
         Args:
             size: Side length in meters (default: default_size)
             center: (x, z) center position (default: use generator defaults)
+            points_per_edge: Points per edge (1=corners only, 3=10 total, etc.)
             
         Returns:
-            Shape object with 4 waypoints (3 corners + return to start)
+            Shape object with (points_per_edge * 3 + 1) waypoints
+            - points_per_edge=1: 4 waypoints (3 corners + 1 return)
+            - points_per_edge=3: 10 waypoints (9 + 1 return)
         """
         size = size or self.default_size
         cx = center[0] if center else self.x_center
@@ -82,21 +86,39 @@ class ShapeGenerator:
         # Height = size * sqrt(3) / 2
         height = size * np.sqrt(3) / 2
         
-        # Vertices (apex at top)
-        #     P2 (apex)
+        # Vertices - START FROM TOP (apex)
+        #     P1 (apex/start)
         #    /  \
         #   /    \
-        #  P1----P3
+        #  P2----P3
         
-        p1 = np.array([cx - size/2, self.y_plane, cz - height/3])  # Bottom-left
-        p2 = np.array([cx,          self.y_plane, cz + 2*height/3])  # Top (apex)
-        p3 = np.array([cx + size/2, self.y_plane, cz - height/3])  # Bottom-right
+        p1 = np.array([cx,          self.y_plane, cz + 2*height/3])  # Top (apex/START)
+        p2 = np.array([cx - size/2, self.y_plane, cz - height/3])    # Bottom-left
+        p3 = np.array([cx + size/2, self.y_plane, cz - height/3])    # Bottom-right
         
-        # Return to start to close the shape
-        waypoints = np.array([p1, p2, p3, p1])
+        corners = [p1, p2, p3, p1]  # TOP→Bottom-left→Bottom-right→TOP
         
+        # Generate waypoints
+        if points_per_edge == 1:
+            # Original behavior: just corners + return
+            waypoints = np.array([p1, p2, p3, p1])
+        else:
+            # Interpolate points along each edge
+            waypoints = []
+            for i in range(3):  # 3 edges
+                start = corners[i]
+                end = corners[i + 1]
+                # Exclude endpoint to avoid duplicates
+                for t in np.linspace(0, 1, points_per_edge, endpoint=False):
+                    point = start + t * (end - start)
+                    waypoints.append(point)
+            # Add return to start
+            waypoints.append(p1)
+            waypoints = np.array(waypoints)
+        
+        total_wp = len(waypoints)
         return Shape(
-            name="equilateral_triangle",
+            name=f"equilateral_triangle_{total_wp}wp",
             waypoints=waypoints,
             closed=True
         )
@@ -141,6 +163,9 @@ class ShapeGenerator:
             for t in np.linspace(0, 1, points_per_edge, endpoint=False):
                 point = start + t * (end - start)
                 waypoints.append(point)
+        
+        # Add return to start point to complete the shape
+        waypoints.append(p1)
         
         waypoints = np.array(waypoints)
         

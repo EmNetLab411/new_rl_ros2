@@ -955,15 +955,18 @@ def plot_drawing_stats(episode_rewards, waypoints_reached, shape_completions,
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
     
-    # Plot 2: Waypoints Reached (top-center) - Y-axis: 0-30, X-axis: episode
+    # Plot 2: Waypoints Reached (top-center)
     ax = axes[0, 1]
+    # Get total waypoints from config
+    from drawing.drawing_config import TOTAL_WAYPOINTS
+    total_wp = TOTAL_WAYPOINTS
     ax.scatter(episodes, waypoints_reached, marker='o', color='green', s=40, alpha=0.6, label='Waypoints')
     ax.plot(episodes, waypoints_avg, color='darkgreen', linewidth=3.0, label='Cumulative Average')
-    ax.axhline(y=30, color='gold', linestyle='--', linewidth=2, label='Target (30)')
+    ax.axhline(y=total_wp, color='gold', linestyle='--', linewidth=2, label=f'Target ({total_wp})')
     ax.set_xlabel('Episode', fontsize=12)
     ax.set_ylabel('Waypoints Reached', fontsize=12)
     ax.set_title('Waypoints Reached per Episode', fontsize=14, fontweight='bold')
-    ax.set_ylim([-1, 32])
+    ax.set_ylim([-1, total_wp + 2])
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
     
@@ -1009,88 +1012,45 @@ def plot_drawing_stats(episode_rewards, waypoints_reached, shape_completions,
         ax.text(0.5, 0.5, 'No Loss Data', ha='center', va='center', fontsize=12)
         ax.set_title('Training Losses', fontsize=14, fontweight='bold')
     
-    # Plot 5: Trajectory Visualization (bottom-center)
-    # Style: Fixed target triangle (orange line) vs Actual trajectory (blue points/line)
-    ax = axes[1, 1]
+    # Plot 5: 3D Trajectory Visualization (bottom-center)
+    # Style: Fixed target triangle (orange line) vs Actual trajectory (blue points)
+    from mpl_toolkits.mplot3d import Axes3D
+    ax = fig.add_subplot(2, 3, 5, projection='3d')
     
-    # Draw FIXED target triangle as solid orange line (like reference image)
-    if target_waypoints is not None and len(target_waypoints) > 0:
-        # Get the 3 corners (for dense_triangle, corners are at indices 0, 10, 20)
-        n_pts = len(target_waypoints)
-        if n_pts >= 30:  # dense triangle with 30 waypoints
-            # Extract corners (every 10 points = 1 corner)
-            corners_idx = [0, 10, 20, 0]  # 3 corners + back to start
-            corner_x = [target_waypoints[i][0] * 100 for i in corners_idx]  # Convert to cm
-            corner_z = [target_waypoints[i][2] * 100 for i in corners_idx]
-            ax.plot(corner_x, corner_z, 'o-', color='orange', linewidth=3, 
-                    markersize=10, label='Target Triangle', zorder=10)
-        else:
-            # Simple triangle (3-4 waypoints)
-            target_x = [wp[0] * 100 for wp in target_waypoints]
-            target_z = [wp[2] * 100 for wp in target_waypoints]
-            target_x.append(target_x[0])
-            target_z.append(target_z[0])
-            ax.plot(target_x, target_z, 'o-', color='orange', linewidth=3, 
-                    markersize=10, label='Target Triangle', zorder=10)
+    # FIXED target triangle (15cm triangle at Y=20cm, centered at X=0, Z=25cm)
+    import math
+    size_cm = 15.0  # 15cm triangle (matches training)
+    height_cm = size_cm * math.sqrt(3) / 2  # ~13cm
+    cx, cy, cz = 0.0, 20.0, 25.0  # Center in cm (Y is the plane)
     
-    # Draw actual trajectory from BEST episode (or last episode)
+    # Triangle corners (in cm) - X, Y, Z
+    triangle_x = [cx - size_cm/2, cx, cx + size_cm/2, cx - size_cm/2]
+    triangle_y = [cy, cy, cy, cy]  # All same Y (drawing plane)
+    triangle_z = [cz - height_cm/3, cz + 2*height_cm/3, cz - height_cm/3, cz - height_cm/3]
+    
+    # Draw fixed target triangle (orange)
+    ax.plot(triangle_x, triangle_y, triangle_z, 'o-', color='orange', linewidth=3, 
+            markersize=10, label='Target Triangle', zorder=10)
+    
+    # Draw actual trajectory from ALL episodes
     if episode_trajectories and len(episode_trajectories) > 0:
-        # Use the LAST episode's trajectory (most recent/best trained)
-        best_traj = episode_trajectories[-1]
-        
-    # Draw actual trajectory
-    if episode_trajectories and len(episode_trajectories) > 0:
-        # 1. Scatter plot for ALL episodes (light blue) to show density
-        all_x = []
-        all_z = []
+        # Scatter plot for ALL episodes (light blue) to show density
+        all_x, all_y, all_z = [], [], []
         for traj in episode_trajectories:
             if traj and len(traj) > 0:
                 for pt in traj:
                     all_x.append(pt[0] * 100)
+                    all_y.append(pt[1] * 100)
                     all_z.append(pt[2] * 100)
         
         if all_x:
-            ax.scatter(all_x, all_z, c='lightblue', alpha=0.1, s=5, label='All Episodes (Density)')
-            
-        # 2. Compute and plot AVERAGE trajectory (solid blue line)
-        # Resample each trajectory to fixed number of points to compute mean
-        num_interp_points = 100
-        resampled_x = []
-        resampled_z = []
-        
-        for traj in episode_trajectories:
-            if traj and len(traj) > 5: # Need uniform enough data
-                t_np = np.array(traj)
-                x = t_np[:, 0] * 100
-                z = t_np[:, 2] * 100
-                
-                # Parameterize by cumulative distance (arc length)
-                dists = np.sqrt(np.diff(x)**2 + np.diff(z)**2)
-                cum_dist = np.insert(np.cumsum(dists), 0, 0)
-                total_dist = cum_dist[-1]
-                
-                if total_dist > 1.0: # Ignore very short/failed episodes (<1cm)
-                    # Interpolate X and Z over normalized distance 0..1
-                    t_curr = cum_dist / total_dist
-                    t_new = np.linspace(0, 1, num_interp_points)
-                    
-                    x_new = np.interp(t_new, t_curr, x)
-                    z_new = np.interp(t_new, t_curr, z)
-                    
-                    resampled_x.append(x_new)
-                    resampled_z.append(z_new)
-        
-        if resampled_x:
-            avg_x = np.mean(resampled_x, axis=0)
-            avg_z = np.mean(resampled_z, axis=0)
-            ax.plot(avg_x, avg_z, '-', color='blue', linewidth=2.5, label='Avg Trajectory')
+            ax.scatter(all_x, all_y, all_z, c='blue', alpha=0.3, s=5, label='Actual Path')
     
-    ax.set_xlabel('X (cm)', fontsize=12)
-    ax.set_ylabel('Z (cm)', fontsize=12)
-    ax.set_title('Target Triangle vs Actual Trajectory', fontsize=14, fontweight='bold')
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.3)
-    ax.set_aspect('equal')
+    ax.set_xlabel('X (cm)', fontsize=10)
+    ax.set_ylabel('Y (cm)', fontsize=10)
+    ax.set_zlabel('Z (cm)', fontsize=10)
+    ax.set_title('3D Trajectory vs Target', fontsize=14, fontweight='bold')
+    ax.legend(fontsize=8, loc='upper left')
     
     # Plot 6: Summary Stats (bottom-right)
     ax = axes[1, 2]
@@ -1112,8 +1072,8 @@ Rewards:
   • Best: {max(episode_rewards):.2f}
 
 Waypoints:
-  • Best: {best_waypoints}/30
-  • Avg: {avg_waypoints:.1f}/30
+  • Best: {best_waypoints}/{total_wp}
+  • Avg: {avg_waypoints:.1f}/{total_wp}
 
 Shape Completion:
   • Completed: {num_complete}/{len(shape_completions)}
@@ -1440,15 +1400,15 @@ def get_drawing_params():
     episodes_input = input("Number of episodes (default 100): ").strip()
     episodes = int(episodes_input) if episodes_input else 100
     
-    # Max steps = ideally 1 per waypoint, but allow some buffer
-    # 30 waypoints = 30 steps minimum, 50 = safer buffer
-    steps_input = input("Max steps per episode (default 50, min 30 for 30 waypoints): ").strip()
-    max_steps = int(steps_input) if steps_input else 50
-    max_steps = max(30, max_steps)  # Enforce minimum
+    # Max steps = ideally 1-2 per waypoint, but allow exploration buffer
+    # 3 waypoints now, so allow min 5 steps, default 100
+    steps_input = input("Max steps per episode (default 100, min 5): ").strip()
+    max_steps = int(steps_input) if steps_input else 100
+    max_steps = max(5, max_steps)  # Enforce minimum 5 steps
     
     print(f"\n✅ Drawing Configuration:")
     print(f"   Episodes: {episodes}")
-    print(f"   Max steps: {max_steps} (30 waypoints need ≥30 steps)")
+    print(f"   Max steps: {max_steps} (3 waypoints, min 5 steps)")
     print(f"   State dim: 18")
     print("="*70)
     
@@ -1478,12 +1438,19 @@ def train_drawing(args):
         
         # Create drawing environment
         print("\n📦 Creating Drawing Environment...")
+        
+        # Import config values
+        from drawing.drawing_config import (
+            SHAPE_TYPE, SHAPE_SIZE, Y_PLANE, WAYPOINT_TOLERANCE, 
+            POINTS_PER_EDGE, TOTAL_WAYPOINTS
+        )
+        
         env = DrawingEnvironment(
             max_episode_steps=args.max_steps,
-            waypoint_tolerance=0.01,  # 1cm tolerance
-            shape_type='dense_triangle',  # Will need to update DrawingEnvironment
-            shape_size=0.15,  # 15cm triangle
-            y_plane=0.20
+            waypoint_tolerance=WAYPOINT_TOLERANCE,
+            shape_type=SHAPE_TYPE,  # Uses points_per_edge from config
+            shape_size=SHAPE_SIZE,
+            y_plane=Y_PLANE
         )
         
         # Wait for environment
@@ -1492,8 +1459,8 @@ def train_drawing(args):
             rclpy.spin_once(env, timeout_sec=0.1)
         
         print("✅ Drawing Environment ready!")
-        print(f"   Shape: dense_triangle (30 waypoints)")
-        print(f"   Tolerance: ±1cm")
+        print(f"   Shape: {SHAPE_TYPE} ({TOTAL_WAYPOINTS} waypoints, {POINTS_PER_EDGE} per edge)")
+        print(f"   Size: {SHAPE_SIZE*100:.0f}cm | Tolerance: ±{WAYPOINT_TOLERANCE*100:.0f}cm")
         
         # Create SAC agent
         use_neural_ik = getattr(args, 'use_neural_ik', False)
@@ -1626,6 +1593,16 @@ def train_drawing(args):
         # Training loop
         print(f"\n🚀 Starting drawing training ({args.episodes} episodes)...\n")
         
+        # Create step log file for detailed step-by-step logging
+        import json
+        from datetime import datetime
+        step_log_dir = os.path.join(os.path.dirname(__file__), 'training_results', 'step_logs')
+        os.makedirs(step_log_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        step_log_path = os.path.join(step_log_dir, f'step_log_{timestamp}.jsonl')
+        step_log_file = open(step_log_path, 'w')
+        print(f"📝 Step log: {step_log_path}")
+        
         # Data tracking for plotting
         episode_rewards = []
         waypoints_completed = []
@@ -1677,7 +1654,7 @@ def train_drawing(args):
                     
                     # Action is delta scaling (how much to move toward waypoint)
                     # Action = 1 means full step, 0 = no move, -1 = away
-                    STEP_SIZE = 0.05  # 5cm max step
+                    STEP_SIZE = 0.15  # 15cm max step (matches triangle edge spacing)
                     
                     # Compute direction to waypoint
                     direction = waypoint - ee_pos_before
@@ -1687,7 +1664,7 @@ def train_drawing(args):
                         direction_norm = direction / distance
                         # Action scales how much we move in that direction
                         # action[0] = forward/back, action[1-2] = fine adjustment
-                        move_amount = (action[0] + 1) / 2 * STEP_SIZE  # 0 to 5cm
+                        move_amount = (action[0] + 1) / 2 * STEP_SIZE  # 0 to 15cm
                         fine_adjust = action[1:3] * 0.02  # ±2cm lateral
                         
                         # Target = EE + movement toward waypoint + fine adjustment
@@ -1728,6 +1705,27 @@ def train_drawing(args):
                 print(f"  📍 AFTER: [{ee_pos_after[0]:.4f}, {ee_pos_after[1]:.4f}, {ee_pos_after[2]:.4f}]")
                 print(f"  📏 Dist: {dist_after*100:.2f}cm | WP: {wp_idx}/{wp_total} | Reached: {wp_reached}")
                 print(f"  💰 Reward: {reward:.3f}")
+                
+                # Log step data to file
+                step_data = {
+                    'episode': episode + 1,
+                    'step': step + 1,
+                    'joints': state[0:6].tolist() if len(state) >= 6 else [],
+                    'ee_before': ee_pos_before.tolist() if ee_pos_before is not None else [],
+                    'ee_after': ee_pos_after.tolist(),
+                    'target': target_pos.tolist() if target_pos is not None else [],
+                    'action': action.tolist() if hasattr(action, 'tolist') else list(action),
+                    'dist_before_cm': float(dist_before * 100) if 'dist_before' in dir() else 0,
+                    'dist_after_cm': float(dist_after * 100),
+                    'waypoint_idx': wp_idx,
+                    'waypoint_total': wp_total,
+                    'waypoints_reached': wp_reached,
+                    'reward': float(reward),
+                    'done': done,
+                    'shape_complete': info.get('shape_complete', False)
+                }
+                step_log_file.write(json.dumps(step_data) + '\n')
+                step_log_file.flush()  # Ensure data is written immediately
                 
                 min_distance = min(min_distance, dist_after)
                 
@@ -1771,7 +1769,7 @@ def train_drawing(args):
             
             # Log
             shape_complete = info.get('shape_complete', False)
-            status = "🎨 COMPLETE!" if shape_complete else f"WP: {wp_reached}/30"
+            status = "🎨 COMPLETE!" if shape_complete else f"WP: {wp_reached}/{wp_total}"
             print(f"Episode {episode+1}/{args.episodes} | "
                   f"Reward: {episode_reward:.1f} | {status}")
             
@@ -1781,8 +1779,12 @@ def train_drawing(args):
         
         print("\n" + "="*70)
         print("🎉 Drawing training complete!")
-        print(f"   Best waypoints: {max(waypoints_completed)}/30")
+        print(f"   Best waypoints: {max(waypoints_completed)}/{wp_total}")
         print("="*70)
+        
+        # Close step log file
+        step_log_file.close()
+        print(f"📝 Step log saved: {step_log_path}")
         
         agent.save_models()
         

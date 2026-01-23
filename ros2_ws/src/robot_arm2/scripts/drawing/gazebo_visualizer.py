@@ -19,6 +19,28 @@ import subprocess
 import numpy as np
 from typing import List, Tuple
 import time
+# Add scripts directory to path for imports
+# When installed, __file__ is in install/robot_arm2/lib/robot_arm2/
+# We need to point to src/robot_arm2/scripts/
+import sys
+import os
+
+# Find the workspace root and add scripts directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
+# Try to find the workspace by looking for 'install' in path
+if 'install' in script_dir:
+    # Running from installed location
+    ws_root = script_dir.split('install')[0]
+    scripts_dir = os.path.join(ws_root, 'src', 'robot_arm2', 'scripts')
+else:
+    # Running from source
+    scripts_dir = os.path.dirname(script_dir)
+
+if scripts_dir not in sys.path:
+    sys.path.insert(0, scripts_dir)
+
+# Import drawing config for waypoint settings
+from drawing.drawing_config import POINTS_PER_EDGE, SHAPE_SIZE, TRIANGLE_CENTER
 
 
 class GazeboDrawingVisualizer(Node):
@@ -80,11 +102,11 @@ class GazeboDrawingVisualizer(Node):
             return
         self.default_triangle_spawned = True
         
-        # Spawn dense triangle at Y=0.20, centered at (0, 0.20, 0.25)
+        # Use config values for waypoint spawning
         self.spawn_dense_waypoints(
-            center=(0.0, 0.20, 0.25),
-            size=0.15,  # 15cm side length
-            points_per_edge=10
+            center=TRIANGLE_CENTER,
+            size=SHAPE_SIZE,
+            points_per_edge=POINTS_PER_EDGE  # From drawing_config.py
         )
     
     def spawn_dense_waypoints(self, center: Tuple[float, float, float], 
@@ -101,20 +123,20 @@ class GazeboDrawingVisualizer(Node):
             points_per_edge: Number of waypoints per edge (default: 10)
         """
         total_points = points_per_edge * 3
-        self.get_logger().info(f"🔺 Spawning {total_points} waypoint targets...")
+        self.get_logger().info(f"🔺 Spawning {total_points + 1} waypoint targets (includes return)...")
         
         # Clear old targets
         self._delete_triangle()
         
-        # Calculate triangle corners
+        # Calculate triangle corners - START FROM TOP (apex)
         height = size * np.sqrt(3) / 2
         cx, cy, cz = center
         
-        p1 = np.array([cx - size/2, cy, cz - height/3])  # Bottom-left
-        p2 = np.array([cx, cy, cz + 2*height/3])          # Top (apex)
-        p3 = np.array([cx + size/2, cy, cz - height/3])  # Bottom-right
+        p1 = np.array([cx, cy, cz + 2*height/3])          # Top (apex/START)
+        p2 = np.array([cx - size/2, cy, cz - height/3])   # Bottom-left
+        p3 = np.array([cx + size/2, cy, cz - height/3])   # Bottom-right
         
-        corners = [p1, p2, p3, p1]  # Close the triangle
+        corners = [p1, p2, p3, p1]  # TOP→Bottom-left→Bottom-right→TOP
         
         # Generate and spawn waypoint spheres
         waypoint_id = 0
@@ -132,6 +154,12 @@ class GazeboDrawingVisualizer(Node):
                 self._spawn_sphere(name, point, sphere_radius, self.target_color)
                 self.triangle_segments.append(name)
                 waypoint_id += 1
+        
+        # Spawn return-to-start waypoint (same as P1 but different color to indicate end)
+        name = f"waypoint_{waypoint_id}"
+        self._spawn_sphere(name, p1, sphere_radius, (0.0, 1.0, 0.0, 0.8))  # Green for end
+        self.triangle_segments.append(name)
+        waypoint_id += 1
         
         self.triangle_spawned = True
         self.get_logger().info(f"✅ Spawned {waypoint_id} waypoint targets (5mm spheres)")

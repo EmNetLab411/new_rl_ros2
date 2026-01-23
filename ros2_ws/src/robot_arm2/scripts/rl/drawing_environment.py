@@ -102,8 +102,14 @@ class DrawingEnvironment(RLEnvironment):
     
     def _generate_shape(self) -> Shape:
         """Generate the target shape."""
+        # Import config to ensure we use the correct point count
+        from drawing.drawing_config import POINTS_PER_EDGE
+        
         if self.shape_type == 'triangle':
-            return self.shape_generator.equilateral_triangle(size=self.shape_size)
+            return self.shape_generator.equilateral_triangle(
+                size=self.shape_size, 
+                points_per_edge=POINTS_PER_EDGE
+            )
         elif self.shape_type == 'dense_triangle':
             # Continuous trajectory with 10 points per edge = 30 waypoints
             return self.shape_generator.dense_triangle(size=self.shape_size, points_per_edge=10)

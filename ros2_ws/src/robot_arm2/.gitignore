@@ -8,8 +8,8 @@ __pycache__/
 dist/
 build/
 
-# Training results and checkpoints
-scripts/training_results/
+# Training checkpoints (but keep results for analysis)
+# scripts/training_results/
 scripts/checkpoints/
 scripts/rl/backup/
 reference/
