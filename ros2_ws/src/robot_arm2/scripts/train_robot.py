@@ -24,7 +24,7 @@ from rl.drawing_environment import DrawingEnvironment  # Import Drawing Environm
 from agents.sac_agent import SACAgentGazebo
 from utils.her import her_augmentation
 from rl.neural_ik import NeuralIK
-from rl.pid_controller import PIDController
+# PIDController removed - not used in training
 
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend

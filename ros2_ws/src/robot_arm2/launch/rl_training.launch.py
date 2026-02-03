@@ -71,7 +71,7 @@ def generate_launch_description():
                 PathJoinSubstitution([
                     FindPackageShare('robot_arm2'),
                     'worlds',
-                    'rl_training.world'
+                    'reaching.world'
                 ]),
                 ' -r'
             ]

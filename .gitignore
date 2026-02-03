@@ -31,3 +31,7 @@ Thumbs.db
 # ROS
 *.bag
 *.db3
+
+# Training outputs (large files)
+ros2_ws/src/robot_arm2/scripts/training_results/
+ros2_ws/src/robot_arm2/scripts/checkpoints/

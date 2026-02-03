@@ -15,7 +15,7 @@ Change POINTS_PER_EDGE to scale waypoint density.
 # Examples:
 #   POINTS_PER_EDGE = 1  → 4 waypoints (3 corners + 1 return)
 #   POINTS_PER_EDGE = 3  → 10 waypoints (9 + 1 return)
-POINTS_PER_EDGE = 3  # 10 waypoints total
+POINTS_PER_EDGE = 7  # 10 waypoints total
 
 # Shape type
 SHAPE_TYPE = 'triangle'
