@@ -3,6 +3,10 @@ ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
 
+# === External Gazebo Harmonic dependencies (built from source) ===
+ros2_ws/src/ros_gz/
+ros2_ws/src/gz_ros2_control/
+
 # === Reference/external projects ===
 rl_model_based/
 

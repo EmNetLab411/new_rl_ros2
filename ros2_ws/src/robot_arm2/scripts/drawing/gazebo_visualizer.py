@@ -189,10 +189,10 @@ class GazeboDrawingVisualizer(Node):
         
         try:
             cmd = [
-                'ign', 'service',
+                'gz', 'service',
                 '-s', f'/world/{self.world_name}/create',
-                '--reqtype', 'ignition.msgs.EntityFactory',
-                '--reptype', 'ignition.msgs.Boolean',
+                '--reqtype', 'gz.msgs.EntityFactory',
+                '--reptype', 'gz.msgs.Boolean',
                 '--timeout', '1000',
                 '--req', f'sdf: "{sdf.replace(chr(10), " ").replace(chr(34), chr(92)+chr(34))}" '
                          f'pose: {{position: {{x: {position[0]}, y: {position[1]}, z: {position[2]}}}}}'
@@ -285,13 +285,13 @@ class GazeboDrawingVisualizer(Node):
   </model>
 </sdf>'''
         
-        # Spawn using ign service
+        # Spawn using gz service
         try:
             cmd = [
-                'ign', 'service',
+                'gz', 'service',
                 '-s', f'/world/{self.world_name}/create',
-                '--reqtype', 'ignition.msgs.EntityFactory',
-                '--reptype', 'ignition.msgs.Boolean',
+                '--reqtype', 'gz.msgs.EntityFactory',
+                '--reptype', 'gz.msgs.Boolean',
                 '--timeout', '1000',
                 '--req', f'sdf: "{sdf.replace(chr(10), " ").replace(chr(34), chr(92)+chr(34))}" '
                          f'pose: {{position: {{x: {mid[0]}, y: {mid[1]}, z: {mid[2]}}}, '
@@ -312,10 +312,10 @@ class GazeboDrawingVisualizer(Node):
         """Delete entity from Gazebo"""
         try:
             cmd = [
-                'ign', 'service',
+                'gz', 'service',
                 '-s', f'/world/{self.world_name}/remove',
-                '--reqtype', 'ignition.msgs.Entity',
-                '--reptype', 'ignition.msgs.Boolean',
+                '--reqtype', 'gz.msgs.Entity',
+                '--reptype', 'gz.msgs.Boolean',
                 '--timeout', '1000',
                 '--req', f'name: "{name}" type: MODEL'
             ]

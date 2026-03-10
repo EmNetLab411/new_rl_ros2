@@ -368,7 +368,7 @@ class DrawingEnvironment(RLEnvironment):
         reward, done = self._calculate_drawing_reward(dist_after, dist_before)
         
         # Ground collision check
-        if self.robot_z <= 0.05:
+        if self.robot_z <= 0.01:
             reward = -50.0
             done = True
             self._move_to_joint_positions(np.zeros(6), duration=1.0)

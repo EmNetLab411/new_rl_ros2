@@ -36,10 +36,10 @@ class TargetManager(Node):
         """Teleport sphere to new position using ign service"""
         try:
             cmd = [
-                'ign', 'service',
+                'gz', 'service',
                 '-s', f'/world/{self.world_name}/set_pose',
-                '--reqtype', 'ignition.msgs.Pose',
-                '--reptype', 'ignition.msgs.Boolean',
+                '--reqtype', 'gz.msgs.Pose',
+                '--reptype', 'gz.msgs.Boolean',
                 '--timeout', '1000',
                 '--req', f'name: "target_sphere" position: {{x: {x}, y: {y}, z: {z}}} orientation: {{w: 1.0}}'
             ]

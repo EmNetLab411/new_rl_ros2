@@ -152,6 +152,15 @@ class GazeboDrawingVisualizer(Node):
         waypoints_world = self._base_to_world(waypoints_base)
         
         self.get_logger().info(f"🔺 Received NEW {n_points} waypoints, spawning in Gazebo world frame...")
+        # Debug: log first and last waypoint in both frames
+        if n_points > 0:
+            self.get_logger().info(f"   📍 WP[0] base_link: [{waypoints_base[0][0]:.4f}, {waypoints_base[0][1]:.4f}, {waypoints_base[0][2]:.4f}]")
+            self.get_logger().info(f"   📍 WP[0] world:     [{waypoints_world[0][0]:.4f}, {waypoints_world[0][1]:.4f}, {waypoints_world[0][2]:.4f}]")
+            center_base = waypoints_base.mean(axis=0)
+            center_world = waypoints_world.mean(axis=0)
+            self.get_logger().info(f"   📍 Center base_link: [{center_base[0]:.4f}, {center_base[1]:.4f}, {center_base[2]:.4f}]")
+            self.get_logger().info(f"   📍 Center world:     [{center_world[0]:.4f}, {center_world[1]:.4f}, {center_world[2]:.4f}]")
+            self.get_logger().info(f"   📍 Board surface expected at world Y≈-0.27, Z≈0.35")
         self._spawn_waypoint_spheres(waypoints_world)
     
     def _base_to_world(self, points_base: np.ndarray) -> np.ndarray:
@@ -160,19 +169,24 @@ class GazeboDrawingVisualizer(Node):
         try:
             tf = self.tf_buffer.lookup_transform(
                 'world', 'base_link',
-                rclpy.time.Time(), timeout=Duration(seconds=0.1)
+                rclpy.time.Time(), timeout=Duration(seconds=0.5)
             )
             t = tf.transform.translation
             r = tf.transform.rotation
             q_list = [r.x, r.y, r.z, r.w]
             R = R_scipy.from_quat(q_list).as_matrix()
             
+            self.get_logger().info(
+                f"   🔄 TF2 world←base_link: t=({t.x:.3f}, {t.y:.3f}, {t.z:.3f}), "
+                f"q=({r.x:.3f}, {r.y:.3f}, {r.z:.3f}, {r.w:.3f})"
+            )
+            
             pts = np.atleast_2d(points_base)
             transformed = (R @ pts.T).T + np.array([t.x, t.y, t.z])
             return transformed
         except Exception as e:
             # Fallback (e.g. Z=0.5m flipped around X)
-            self.get_logger().debug(f"TF2 missing world frame, using fallback: {e}")
+            self.get_logger().warn(f"⚠️ TF2 missing world frame, using FALLBACK: {e}")
             pts = np.atleast_2d(points_base).copy()
             # Flipped 180 on X, Z=0.5
             transformed = pts.copy()
@@ -226,10 +240,10 @@ class GazeboDrawingVisualizer(Node):
         
         try:
             cmd = [
-                'ign', 'service',
+                'gz', 'service',
                 '-s', f'/world/{self.world_name}/create',
-                '--reqtype', 'ignition.msgs.EntityFactory',
-                '--reptype', 'ignition.msgs.Boolean',
+                '--reqtype', 'gz.msgs.EntityFactory',
+                '--reptype', 'gz.msgs.Boolean',
                 '--timeout', '1000',
                 '--req', f'sdf: "{sdf.replace(chr(10), " ").replace(chr(34), chr(92)+chr(34))}" '
                          f'pose: {{position: {{x: {position[0]}, y: {position[1]}, z: {position[2]}}}}}'
@@ -294,10 +308,10 @@ class GazeboDrawingVisualizer(Node):
         
         try:
             cmd = [
-                'ign', 'service',
+                'gz', 'service',
                 '-s', f'/world/{self.world_name}/create',
-                '--reqtype', 'ignition.msgs.EntityFactory',
-                '--reptype', 'ignition.msgs.Boolean',
+                '--reqtype', 'gz.msgs.EntityFactory',
+                '--reptype', 'gz.msgs.Boolean',
                 '--timeout', '1000',
                 '--req', f'sdf: "{sdf.replace(chr(10), " ").replace(chr(34), chr(92)+chr(34))}" '
                          f'pose: {{position: {{x: {mid[0]}, y: {mid[1]}, z: {mid[2]}}}, '
@@ -314,10 +328,10 @@ class GazeboDrawingVisualizer(Node):
         """Delete entity from Gazebo."""
         try:
             cmd = [
-                'ign', 'service',
+                'gz', 'service',
                 '-s', f'/world/{self.world_name}/remove',
-                '--reqtype', 'ignition.msgs.Entity',
-                '--reptype', 'ignition.msgs.Boolean',
+                '--reqtype', 'gz.msgs.Entity',
+                '--reptype', 'gz.msgs.Boolean',
                 '--timeout', '1000',
                 '--req', f'name: "{name}" type: MODEL'
             ]

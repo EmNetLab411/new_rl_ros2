@@ -554,7 +554,7 @@ class RLEnvironment(Node):
         
         # Check for ground collision (Z <= 5cm) - SAFETY FEATURE
         # Heavy penalty to prevent robot from breaking by hitting ground
-        GROUND_SAFETY_Z = 0.05  # 5cm - anything below this is dangerous
+        GROUND_SAFETY_Z = 0.01  # 1cm - anything below this is dangerous
         if self.robot_z <= GROUND_SAFETY_Z:
             reward = -50.0  # Heavy penalty for dangerous position
             done = True

@@ -34,13 +34,15 @@ class BoardTransform:
     
     def update_from_pose(self, pose_msg: PoseStamped) -> bool:
         """
-        Build T_vision from ArUco PoseStamped and combine with TF2.
+        Build transform from ArUco PoseStamped position + TF2.
         
-        Args:
-            pose_msg: PoseStamped from /vision/board_pose (camera_link frame)
-            
-        Returns:
-            True if transform was successfully built and locked
+        Uses ArUco only for POSITION (where the board center is).
+        Uses a CLEAN rotation that maps board-local axes correctly:
+          - Board X (left/right) → base_link X
+          - Board Y (up/down)    → base_link -Z  (robot is flipped 180° on X)
+          - Board Z (depth)      → base_link +Y  (toward camera in flipped frame)
+        
+        This avoids the tilt errors from ArUco solvePnP rotation noise.
         """
         if self.locked:
             return True
@@ -58,7 +60,7 @@ class BoardTransform:
         self.T_vision[:3, :3] = R
         self.T_vision[:3, 3] = [p.x, p.y, p.z]
         
-        # Build T_tf2 (4×4 camera_link→base_link) from TF2
+        # Build T_tf2 (4×4 camera_optical_link→base_link) from TF2
         try:
             tf = self.tf_buffer.lookup_transform(
                 'base_link', pose_msg.header.frame_id,
@@ -77,8 +79,25 @@ class BoardTransform:
         except Exception:
             return False
         
-        # Combined transform: board-local → base_link
-        self.T_combined = self.T_tf2 @ self.T_vision
+        # Get board center in base_link (using full ArUco transform for position)
+        T_full = self.T_tf2 @ self.T_vision
+        board_center_base = T_full[:3, 3]  # Translation = board origin in base_link
+        
+        # Build CLEAN T_combined using only the detected position
+        # but with an IDEAL rotation for the known board orientation:
+        #   Board X → base_link +X  (left/right)
+        #   Board Y → base_link -Z  (up on board = down in flipped base_link)
+        #   Board Z → base_link +Y  (out of board = toward camera)
+        R_ideal = np.array([
+            [ 1,  0,  0],   # board X → base X
+            [ 0,  0,  1],   # board Z → base Y (depth toward camera)
+            [ 0, -1,  0],   # board Y → base -Z (up on board)
+        ], dtype=np.float64)
+        
+        self.T_combined = np.eye(4)
+        self.T_combined[:3, :3] = R_ideal
+        self.T_combined[:3, 3] = board_center_base
+        
         self.locked = True
         return True
     
