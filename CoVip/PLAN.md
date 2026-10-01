@@ -18,73 +18,127 @@ Với nguyên nhân (2): robot đã tự biết gần đúng bút đang ở đâ
 
 **Việc gán nhãn 260 ảnh cầm tay đang làm dở: dừng hẳn.** Video cầm tay cũ (5 phiên, 1945 ảnh) không dùng làm dữ liệu train chính nữa — lý do chi tiết ở Phase 6.
 
-## 2. Tiến độ (cập nhật 2026-09-23)
+## 2. Tiến độ (cập nhật 2026-10-01)
 
 | Phase | Việc                                                    | Trạng thái                                          | Cần gì để làm tiếp                              |
 | ----- | -------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------- |
-| 1     | Sửa kiến trúc ống dẫn ảnh Pi (`run_pi4_ros2.py`) | ✅ Đã deploy + chạy + đo thật trên Pi (xem mục 5b)  | Đã tối ưu hết mức phần mềm (~4.8→ước tính 6.5-7fps). Trần cứng 8fps ở`imgsz=320` → muốn 15-20fps phải train lại `imgsz=224` (mục 5c) |
+| 1     | Sửa kiến trúc ống dẫn ảnh Pi (`run_pi4_ros2.py`) | ✅ **Đạt 15fps trên Pi** với `pen_pose_192_sc.tflite`, 640×360; bắt 97-100% khi bút trong khung (mục 5d) | Kiểm tra trần 15.0fps có phải do camera; bỏ frame bút chạm mép ảnh (xem "Việc tiếp theo") |
 | —    | `fk_4dof()`/`fk_4dof_matrix()` cho robot 4-DOF       | ✅ Xong, verify khớp tuyệt đối với`fk()` 6-DOF | Chỉ còn dùng cho tay cũ (`--arm old4dof`)      |
-| —    | **Chuyển sang tay mới `assarm`** (mục 2b)          | ✅ FK + script vision + config driver xong, self-test đạt | Xác nhận trên robot thật: home/chiều servo, bản 180°/270°, kênh PCA9685, đo `TOOL_OFFSET` |
-| 2     | `scripts/calibrate_camera.py`                          | ✅ Chạy thật OK với C930e (test), lỗi 0.24px<0.5px | **Chạy LẠI với C920 thật khi có** (K/dist riêng theo từng camera vật lý, số hiện tại chỉ để test pipeline) |
-| 3     | `scripts/calibrate_hand_eye.py`                        | ✅ Code xong (viết lại dùng marker đơn thật), `--self-test` khớp tuyệt đối | Marker đã in xong (DICT_4X4_50 id0), cần robot để `collect` |
-| 4     | `scripts/fk_roi_predictor.py`                          | ✅ Code xong,`--self-test` chạy đạt              | `calib/c920_720p.npz` + `calib/T_cam_to_base.npy` |
+| —    | **Chuyển sang tay mới `newarm`** — thiết kế cuối `newarm_final` (mục 2b) | ✅ FK/IK + script vision + config driver (4 servo 180°, kênh 0-3) xong; đã kiểm với URDF + STL, self-test đạt | Lắp tay thật rồi làm Bước 0b (mục 4c) |
+| 0b    | **Bring-up tay mới** `scripts/newarm_bringup.py` (mục 4c) | ✅ Script xong, đã chạy `--dry-run`; ⬜ chưa chạy trên robot | Tay đã lắp + driver chạy với `servos_newarm.yaml`. **Chặn Phase 3** — FK lệch thì hand-eye sai |
+| 2     | `scripts/calibrate_camera.py`                          | ✅ Chạy thật OK với C930e, lỗi 0.24px<0.5px (file tên `c920_720p.npz` nhưng số là của C930e) | Đã xác nhận 2026-10-01: C930e này là camera deploy → số calib dùng được; node trên Pi đã nạp file calib (mục 5d). **Còn thiếu: khoá focus rồi calib lại** — Pi đang autofocus, calib chỉ đúng ở mức nét lúc calib. Thay camera vật lý khác thì calib lại |
+| 3     | `scripts/calibrate_hand_eye.py`                        | ✅ Code xong (marker đơn, `--arm newarm` mặc định), `--self-test` khớp tuyệt đối | Bước 0b đạt + marker dán trên hộp bút (DICT_4X4_50 id0) → `collect` |
+| 4     | `scripts/fk_roi_predictor.py`                          | ✅ Code xong (`--arm newarm` mặc định),`--self-test` chạy đạt | `calib/c920_720p.npz` + `calib/T_cam_to_base.npy` |
 | 5     | Node ghép hoàn chỉnh publish`/pen_xyz`              | ⬜ Chưa viết                                        | Phase 4 chạy được với calib thật trước        |
-| 6     | Dataset mới (bút gắn tay robot, camera cố định)    | ⬜ Tuỳ chọn, không chặn                           | Chỉ cần nếu Phase 5 đo chưa đủ chính xác     |
-| —    | Train lại model ở`imgsz=224` để đạt 15-20fps    | ⬜ Đang làm — dataset đã có (2445 ảnh)          | Cài driver NVIDIA để dùng RTX 3060 (mục 5c); đo tốc độ từng `imgsz` trước khi train |
+| —    | IK cho executor vẽ `vs_lib/core/kinematics_newarm.py` | ✅ Viết xong + self-test đạt; ⬜ chưa nối vào `drawing_executor_ros2.py` | `T_cam_to_base` thật (Phase 3) |
+| —    | Mô phỏng Gazebo tay mới (`newarm_sim.launch.py`, mục 2c) | ✅ Chạy được: tay + camera + bảng mới, vẽ vuông 10cm lệch max 0.5mm | Luồng train RL (`train_visual_servoing.py`, `control_backends.py`…) vẫn là tay 6-DOF cũ — chưa chuyển |
+| 6     | Dataset mới (bút gắn tay robot, camera cố định)    | 🟡 Đã thêm 590 ảnh bút CẦM TAY nghiêng/chúc xuống/xa (mục 5d); bản bút gắn tay robot chưa quay | Quay với bút gắn tay robot khi tay mới chạy được |
+| —    | Train lại model ở`imgsz=224` để đạt 15-20fps    | ✅ Xong: chọn `imgsz=192` (15fps trên Pi); 224 ~12.8fps (mục 5d) | — |
 | sau   | Bù độ nén lò xo (bài toán cân bằng drone)       | ⬜ Cố tình chưa làm                               | Sau khi Phase 1-5 ổn định                          |
 
-3 script mới tự kiểm ngay bằng số giả lập, không cần phần cứng:
+### Việc tiếp theo của phần vision, theo thứ tự (cập nhật 2026-10-01)
+
+Vision chạy độc lập đã ổn (15fps, bắt 97-100% khi bút trong khung — mục 5d). Các việc 1-4 không cần robot, làm được ngay:
+
+1. **Khoá focus + calib lại camera.** Chọn 1 giá trị focus (vd 20), dùng cho cả `calibrate_camera.py capture --focus N`, `record_dataset.py record --focus N` và `run_pi4_ros2.py --focus N`. Hiện Pi chạy autofocus (`focus_automatic_continuous=1`).
+2. **Đo sai số XYZ bằng thước** ở 200 / 300 / 400mm (tiêu chí Phase 4+5: vài mm). Tới giờ mới kiểm bằng mắt. Nếu Z lệch theo tỉ lệ cố định → đo bút bằng thước kẹp, sửa `PEN_3D` (64mm / 23mm).
+3. **Bỏ frame bút chạm mép ảnh** trong `run_pi4_ros2.py` — đã thấy XYZ nhảy ~155mm ở frame cuối trước khi bút ra khỏi khung (Kalman chỉ chặn bước nhảy >250mm).
+4. **Kiểm tra trần 15.0fps:** model chạy được ~18fps nhưng node đứng ở đúng 15.0 → nghi camera tự hạ fps khi thiếu sáng. Thử `v4l2-ctl -d /dev/video0 --set-ctrl=exposure_dynamic_framerate=0` rồi đo lại.
+5. Sau Bước 0b (bring-up tay mới): **Phase 3** hand-eye → **Phase 4** ROI theo FK (khi đó thử tăng độ phân giải bắt ảnh lên 720p) → **Phase 5** node ghép.
+6. **Phase 6:** quay dữ liệu bút gắn tay robot; gán nhãn theo quy trình ở mục 5d.
+
+Tự kiểm ngay bằng số giả lập, không cần phần cứng (mặc định `--arm newarm`; thêm `--arm old4dof` để kiểm tay cũ):
 
 ```bash
 cd /home/ducanh/new_rl_ros2/CoVip
 python3 scripts/fk_roi_predictor.py --self-test
 python3 scripts/calibrate_hand_eye.py --self-test
+python3 scripts/newarm_bringup.py show                 # cấu hình servo + giới hạn khớp đang dùng
+python3 scripts/newarm_bringup.py fk-check --dry-run   # xem trước tư thế + vị trí đầu bút mong đợi
+python3 ../ros2_ws/src/visual_servoing/vs_lib/core/kinematics_newarm.py   # IK cho executor
 ```
 
-## 2b. Chuyển sang cánh tay mới `assarm` (2026-09-30)
+## 2b. Chuyển sang cánh tay mới — thiết kế CUỐI `newarm_final` (cập nhật 2026-10-01)
 
-Thiết kế mới: `ref/assarm_ikfk-20260930T054840Z-1-001/assarm_ikfk/` (URDF xuất từ Fusion 360, package **ROS1**). Đầu bút + giá bút giữ nguyên như cũ.
+Thiết kế: `ref/newarm_final_description-20261001T060843Z-1-001/` (URDF xuất từ Fusion 360, package **ROS1**). Thay cho bản nháp `ref/newarm_draft_ikfk-...` (có gripper + servo J5) — **bản nháp không còn dùng**. Tên trong code vẫn là `newarm` (`--arm newarm`, `fk_newarm.py`, `servos_newarm.yaml`).
 
 | Khớp | URDF | Servo | Trục | Vai trò |
 | --- | --- | --- | --- | --- |
-| J1 base | `Revolute_Joint_1` | TD-8120MG | (0,0,-1) | yaw |
-| J2 shoulder | `Revolute_Joint_2` | RDS3120 | (-1,0,0) | pitch |
-| J3 elbow | `Revolute_Joint_3` | MG995 | (-1,0,0) | pitch |
-| J4 wrist_roll | `Revolute_Joint_4` | MG995 | (0,0,-1) | xoay quanh trục cẳng tay |
-| J5 | `Revolute_Joint_Active` | MG995 | (0,1,0) | servo gripper/giá bút, ngoài chuỗi vị trí |
+| J1 base | `Revolute 2` | TD-8120MG | (0,0,-1) | yaw |
+| J2 shoulder | `Revolute 3` | RDS3120 | (-1,0,0) | pitch |
+| J3 elbow | `Revolute 7` | MG996R | (-1,0,0) | pitch |
+| J4 wrist_roll | `Revolute 24` | MG996R | (0,0,-1) | xoay hộp bút quanh trục cẳng tay |
 
-**Khác tay cũ:** không còn `wrist_pitch` → vị trí đầu bút chỉ do J1-J3 quyết định, hướng bút = hướng cẳng tay (q2+q3), **không chỉnh độc lập được**. Ở q=0 tay treo thẳng xuống từ z=0.59m (Servo1) tới z=0.197m (Plate_1); đoạn J2→J3 dài 0.142m, J3→J4 dài 0.166m.
+**Chỉ 4 servo.** Hộp bút (`hopbut_1`) + bút (`but_1`) gắn cứng vào đầu ra J4, **bút đồng trục J4** (kiểm từ STL) → J4 không dời đầu bút, không đổi hướng bút, chỉ xoay hộp bút/marker quanh trục (dùng để quay marker về phía camera). **Không có wrist pitch**: vị trí đầu bút do J1-J3, hướng bút = hướng cẳng tay (nghiêng q2+q3 so với phương đứng). Ở q=0 tay treo thẳng xuống: servo J1 z=0.418m → đầu bút z=0.013m (base_link); J2→J3 = 142.2mm, J3→J4 = 165.8mm, gốc hộp bút → đầu bút = **62.5mm** (CAD; số đo tay 56mm lệch ~6mm — đo lại khi lắp, chỉ ảnh hưởng ROI).
 
-**Lỗi trong URDF export đã sửa (trong FK, không sửa file URDF gốc):** `Revolute_Joint_1` có origin lệch 0.54m khỏi tay → quay J1 là tay văng ra xa. Đối chiếu tâm bánh răng trong STL (`Servo1_Pinion_Gear_1`: (0, -0.0108, 0.5458)) và dời trục về đúng chỗ. J2/J3/J4 khớp STL. Cụm Servo5/gripper cũng bị đặt sai (z≈0) nhưng không ảnh hưởng vision. **Nếu port URDF này sang ROS2/Gazebo cho phần RL, phải sửa lỗi J1 này trong URDF.**
+**Hai bẫy trong bộ file thiết kế (đã xử lý trong `fk_newarm.py`, KHÔNG sửa file gốc):**
+1. `Revolute 2` (J1) có origin lệch 0.42m khỏi tay. Trục thật = trục ra servo 8120 trong STL (x=-13.15mm, y=25.0mm). Phải sửa trong URDF nếu port sang ROS2/Gazebo.
+2. File STL được export ở tư thế **tay duỗi ngang (q2=+90°)**, còn chuỗi khớp URDF ở tư thế **tay thẳng xuống** → mở bằng RViz/Gazebo lưới sẽ lệch khỏi khung khớp. Động học (số khớp) vẫn đúng: xoay lưới về q=0 thì tâm bánh răng J3/J4 và đầu bút khớp FK tới 0.00mm.
 
-**Đã làm:**
-- `ros2_ws/.../rl/fk_assarm.py` — FK thuần Python (`fk_flange_matrix`, `fk_tip`), `SERVO_SPECS` (home/range/đảo chiều từng servo), `TOOL_OFFSET`. Verify: J1=0 khớp URDF gốc tới 1e-16 ở 200 bộ góc ngẫu nhiên; J1 quay đúng quanh trục bánh răng. `fk_ik_utils.py` KHÔNG đổi (phần RL còn dùng).
-- `CoVip/scripts/arm_models.py` — chọn tay bằng `--arm assarm|old4dof` (mặc định `assarm`). `fk_roi_predictor.py` và `calibrate_hand_eye.py` đã chuyển sang dùng nó; `--self-test` đạt với cả 2 tay. Hand-eye của `assarm` dùng frame **Plate_1** (không phụ thuộc `TOOL_OFFSET`).
-- `wicom_roboarm/config/servos_assarm.yaml` + launch arg: `ros2 launch wicom_roboarm wicom_roboarm.launch.py servo_config:=servos_assarm.yaml`. Tên khớp: `base, shoulder, elbow, wrist_roll, j5`.
+**Đã làm + đã kiểm:**
+- `ros2_ws/.../rl/fk_newarm.py` — FK (`fk_flange_matrix` = khung hộp bút, `fk_tip`), IK giải tích (`ik_tip`, `ik_tip_nearest`), `SERVO_SPECS`, `TOOL_OFFSET`. Kiểm: khớp URDF 1e-16 (300 tư thế); đầu bút khớp STL 0.00mm; IK↔FK 1e-12 (5000 tư thế, ~10µs/lần). `fk_ik_utils.py` KHÔNG đổi (RL cũ còn dùng).
+- `CoVip/scripts/arm_models.py` — `--arm newarm|old4dof` (mặc định `newarm`, 4 khớp `base/shoulder/elbow/wrist_roll`). `fk_roi_predictor.py`, `calibrate_hand_eye.py` dùng nó; `--self-test` đạt cả 2 tay. Hand-eye dùng khung hộp bút (không phụ thuộc `TOOL_OFFSET`).
+- `wicom_roboarm/config/servos_newarm.yaml` (4 servo) + launch arg `servo_config:=servos_newarm.yaml`.
+- `ros2_ws/.../rl/newarm_dh_table.py` — bảng Standard DH + bộ số đối chiếu công cụ ngoài (khớp FK 2e-13mm).
+- `ros2_ws/.../rl/newarm_board_reach.py` — quét vị trí bảng ArUco thẳng đứng vẽ được (hình vuông 10cm + nhấc bút 2cm).
+
+- `CoVip/scripts/newarm_bringup.py` — bring-up trước khi dùng camera: `show` / `set` / `home` / `directions` / `fk-check` (có `--dry-run`). Ghi hiệu chỉnh (home, chiều quay, `tool_offset`) vào `ros2_ws/.../rl/newarm_servo_calib.json`; `fk_newarm.py` tự nạp file này và suy giới hạn khớp từ cửa sổ servo → không phải sửa code. **File calib sinh ra trên máy chạy bring-up (Pi) — nhớ copy về máy dev nếu chạy phân tích ở đó.**
+- `ros2_ws/.../vs_lib/core/kinematics_newarm.py` — `NewArmKinematicsSolver.solve_ik(x,y,z)` (m, base_link → 4 góc lệnh servo), giữ nhánh khi bám liên tục; self-test đạt. CHƯA nối vào `drawing_executor_ros2.py`.
+- Servo: cả 4 là bản 180° (khớp URDF limit ±90°); kênh PCA9685 = 0,1,2,3.
+
+**Giới hạn cơ khí (quét va chạm STL, khe 2mm):** vai ±118° (dùng trọn ±90° của servo được), khuỷu **-110°..+160°**. Servo 180° chỉ dùng 1 cửa sổ 180°:
+
+| Cửa sổ khuỷu q3 | Số vị trí bảng vẽ được | Ghi chú |
+| --- | --- | --- |
+| [-90°, 90°] (sừng gắn giữa) | 14 | vùng rất hẹp |
+| **[-30°, 150°]** (khuyến nghị) | **62** | gửi lệnh khuỷu = 30° rồi gắn cẳng tay THẲNG hàng bắp tay; sau đó đặt `home_deg=30` cho `elbow` trong `SERVO_SPECS` |
+
+Vị trí bảng tốt nhất: cách trục J1 **~32cm**, tâm hình **~12cm dưới trục J1** (z≈0.30m), góc bút-pháp tuyến ~20°; vùng dùng được góc ≤45°: d≈17-35cm.
+
+**Vùng vẽ tốt nhất + bảng workspace in thật (2026-10-01):**
+- `ros2_ws/.../rl/newarm_draw_region.py` — quét mặt bảng thẳng đứng, điểm "vẽ được chắc chắn" = với tới trong giới hạn khớp ở mọi độ sâu d±2cm + nhấc bút 2cm, khuỷu/cổ tay cách bảng ≥2cm, góc bút ≤45°, khuỷu gập ≥25° (tránh mép tầm với/điểm kỳ dị). `--square 0.10` tìm chỗ đặt hình vẽ có góc bút tốt nhất.
+
+| Lắp khuỷu | Hình vuông 10cm vẽ được ở | Chỗ tốt nhất | Dư mỗi phía |
+| --- | --- | --- | --- |
+| ±90° (sừng giữa) | chỉ d ≈ 31-32cm | d=31.2cm, tâm 11.8cm dưới J1, góc bút max 23° | **0cm** — lệch vài mm là hỏng |
+| **[-30°,150°]** | d = 17-29cm | **d≈22.5cm, tâm 16.3cm dưới trục J1**, lệch ngang −15mm (≈ thẳng trục J1), góc bút TB 11.5° / max 20° | **6cm** (+ ±2cm độ sâu) |
+
+- **Bảng in:** `ros2_ws/src/visual_servoing/aruco_markers/workspace_board_newarm_A4.pdf` (tạo bằng `make_workspace_board.py` cùng thư mục): vùng vẽ **100×100mm** ở giữa (= `SHAPE_SIZE`), 4 marker `DICT_4X4_1000` ID 0-3 cạnh **30mm**, tâm marker **±75mm**, đường cắt 190mm. In 100%, đo lại thước 100mm trên tờ giấy. Đã cho detector đọc lại file: đủ 4 ID, solvePnP ra 500.1mm so với 500.0mm thật.
+- **Bảng cũ 120mm** (marker 20mm, ±48mm; `workspace_board_A4.pdf`) khớp world Gazebo nhưng vùng trống ở giữa chỉ ~70mm — hình vuông 10cm đè lên marker. Chỉ dùng cho mô phỏng.
+- Hình học bảng giờ là tham số ROS `board_marker_offset_m` / `board_marker_size_m` ở cả `vision_aruco_detector.py` và `vision_node_ros2.py` (mặc định = bảng cũ, mô phỏng không đổi). Bảng in thật: chạy với `config/vision_board_newarm.yaml` (0.075 / 0.030).
+- **Cách đặt bảng:** thẳng đứng, đối diện phía trước tay; tâm bảng thẳng trục J1, thấp hơn trục J1 ≈160mm; mặt bảng cách trục J1 ≈225mm (dùng được 170-290mm).
 
 **Việc cần xác nhận trên robot thật (trước Phase 3):**
-1. **Bản 180° hay 270°** của RDS3120/TD-8120MG. Driver map lệnh 0-180 tuyến tính vào 500-2500µs; bản 270° sẽ quay 1.5 lần → sửa `range_deg` trong `SERVO_SPECS` (hoặc thu hẹp dải xung trong yaml), không thì FK sai 50%.
-2. **Home + chiều quay:** gửi 90° cả 4 khớp → tay phải treo thẳng xuống (= URDF q=0). Tăng lệnh từng khớp, so với chiều URDF (J1 +q quay theo chiều kim đồng hồ nhìn từ trên xuống quanh -Z, J2/J3 +q quay quanh -X). Ngược thì đặt `inverted: True`.
-3. **Kênh PCA9685** thật cho 5 servo (yaml đang để tạm 0/1/4/7/15).
-4. **Đo `TOOL_OFFSET`** (vector Plate_1 → đầu bút, hệ Plate_1) bằng thước kẹp. Hiện ước lượng `(0, 0, -0.10)`. Chỉ ảnh hưởng ROI (Phase 4), truyền qua `--tool-offset X Y Z` hoặc sửa hằng số.
-5. **Sai số MG995:** servo analog, không phản hồi vị trí thật (`joint_states` là góc LỆNH), có rơ/xệ khi chịu tải. Mỗi 1° sai ở J2 ≈ 6mm ở đầu bút → chọn `--roi-size` rộng rãi, và FK chỉ dùng để khoanh ROI, toạ độ cuối vẫn lấy từ vision.
+1. **Lắp + home:** `newarm_bringup.py set --joint elbow --home 30` (nếu lắp lệch khuỷu) → `home` → gắn sừng/khâu ở tư thế tay thẳng xuống.
+2. **Chiều quay:** `newarm_bringup.py directions` (tự ghi `inverted`).
+3. **`TOOL_OFFSET`**: đo gốc hộp bút → đầu bút (CAD 62.5mm) → `set --tool-offset 0 0 -0.0xx`.
+4. **Kiểm FK bằng thước:** `newarm_bringup.py fk-check` — đạt khi lệch < 10mm, rồi mới sang Phase 3.
+5. **Sai số MG996R:** servo analog, `joint_states` là góc LỆNH không phải góc thật; 1° sai ở J2 ≈ 6mm ở đầu bút → `--roi-size` rộng rãi, toạ độ cuối lấy từ vision.
 
-**IK + khả năng vẽ lên bảng ArUco thẳng đứng (2026-09-30):**
-- `fk_assarm.ik_tip()` / `ik_tip_nearest()` — IK giải tích (J1-J3 vị trí, J4 cố định), khớp FK tới 1e-12 trên 5000 tư thế, ~10µs/lần. `ik_tip_nearest` giữ nhánh khi bám liên tục.
-- `ros2_ws/.../rl/assarm_board_reach.py` — quét vị trí bảng (hình vuông 10cm + nhấc bút 2cm, không cho khuỷu/cổ tay chạm bảng).
-- Kết quả (TOOL_OFFSET ước lượng): bảng phải cách trục J1 **~32-37cm**, tâm hình **~5-20cm dưới trục J1**; góc bút-pháp tuyến ~15-25° (tốt hơn tilt 35° của tay cũ). Vùng vẽ được **rất hẹp** vì khuỷu chỉ ±90°: rung sâu ±2cm vẫn bám được, ±3cm mất IK 4%, ±5cm mất 17%.
-- **Nếu lắp lệch home servo khuỷu để có q3 ∈ [-30°,150°]**: vùng vẽ rộng gấp ~4 lần (bảng d≈27cm, z≈37cm), rung sâu ±7cm vẫn 0% mất IK. Nên cân nhắc khi lắp ráp (servo 180° chỉ đổi được VỊ TRÍ dải, không nới được dải).
-- RL cũ (`drawing_config.X_PLANE=-0.50`, fallback board z=0.60) KHÔNG áp dụng được cho tay mới — tầm với chỉ ~0.41m từ vai.
+**Marker cho hand-eye:** dán trên hộp bút/đĩa gắn bút (cứng với đầu ra J4). Vì bút đồng trục J4, có thể dùng J4 để xoay marker về phía camera; các tư thế thu mẫu cần đổi cả J1, J2/J3 và J4 để có đủ trục xoay khác nhau.
 
-**Bút + J5 + giới hạn cơ khí (2026-09-30):**
-- Giá bút cũ lắp **thay gripper, trên trục servo J5**, trục J5 → đầu bút **56mm**. Vị trí trục J5 lấy từ STL (`J5_IN_PLATE`, ước lượng — đo lại khi lắp). Tên khớp J5 = `pen`.
-- **J4 = ±90° thì trục J5 song song J2/J3 → J5 là wrist pitch**: tay mới tương đương tay 4-DOF cũ (base, shoulder, elbow, wrist_pitch; J4 giữ cố định).
-- Quét va chạm STL: vai về phía trước chỉ tới **+82°** (URDF ghi +90), khuỷu gập được **-110°..+142°** → khuyến nghị lắp sừng servo khuỷu cho cửa sổ **[-40°, 140°]** (lệnh 40° = cẳng tay thẳng).
-- `assarm_board_reach.py` (giới hạn trên): J5 khoá q5=0 → 57 vị trí vẽ được, góc bút tốt nhất 19°; **J5 làm wrist pitch (`--j5 wrist`) → 79 vị trí, góc bút ~10-17° ở hầu hết vùng**, chịu lệch cao/thấp của drone tốt hơn nhiều. → Nên vẽ ở chế độ wrist.
-- Vision: `arm_models.AssArm` đọc 5 khớp (có `pen`); hand-eye dùng khung giá bút sau J5 (`fk_pen_matrix`), ROI dùng đầu bút theo góc J5 thật.
-- `assarm_dh_table.py` — bảng Standard DH (J1-J3, J5 khoá) + bộ số để đối chiếu công cụ ngoài.
+**Chưa làm (ngoài phạm vi vision):** nối IK mới vào executor vẽ (thay `KinematicsSolver`, bỏ tham số `tilt`); phần RL/digital twin (`control_backends.py` 6 khớp, `drawing_config.X_PLANE=-0.50` ngoài tầm với ~0.39m của tay mới, Gazebo URDF) vẫn là tay cũ; URDF mới là ROS1 cần port sang ROS2 + sửa 2 bẫy trên.
 
-**Chưa làm (ngoài phạm vi vision):** phần RL/digital twin (`control_backends.py` `GAZEBO_TO_PI_JOINT_MAP` 6 khớp, `drawing_environment.py`, Gazebo URDF) vẫn là tay cũ; URDF mới là ROS1 cần port sang ROS2 + sửa lỗi J1.
+## 2c. Mô phỏng Gazebo tay mới (2026-10-01)
+
+Chạy song song với sim tay cũ, không sửa file nào của tay cũ. **Lưu ý tên:** thư mục `urdf/new_arm/` + `meshes/new_arm/` có sẵn là tay 6-DOF CŨ; tay mới nằm ở `urdf/newarm/` + `meshes/newarm/`.
+
+```bash
+cd ros2_ws && colcon build --packages-select visual_servoing && source install/setup.bash
+ros2 launch visual_servoing newarm_sim.launch.py            # thêm headless:=true để không mở GUI
+ros2 run visual_servoing newarm_sim_draw                    # vẽ thử vuông 10cm, in sai số
+```
+
+- **Sinh mô tả:** `scripts/rl/newarm_make_sim.py` đọc bản export trong `ref/`, sửa 2 lỗi export (origin J1 lệch 0.42m; lưới STL ở tư thế q2=+90° trong khi chuỗi khớp treo thẳng) rồi ghi `urdf/newarm/*.xacro`, `meshes/newarm/`, `models/newarm_board/`, `worlds/visual_servoing_newarm.world`. Đổi bản export / vị trí bảng → sửa hằng số đầu file rồi chạy lại script, đừng sửa tay các file sinh ra.
+- **Tên khớp trong sim = tên servo thật:** `base, shoulder, elbow, wrist_roll` (`config/controllers_newarm.yaml`), điều khiển qua `/arm_controller/joint_trajectory` như tay cũ. Có thêm frame `pen_tip` (= `hopbut_1` + `TOOL_OFFSET`).
+- **Bố cục world:** trục J1 trùng trục Z world, bảng ở +X world cách trục J1 22.5cm (đúng vị trí tốt nhất ở mục 2b), bảng là bảng in thật (marker 30mm, ±75mm). Camera cố định sau-bên tay, 640×480. `base_link` xoay yaw 90° so với world.
+- **Giới hạn khuỷu mặc định [-30°,150°]** (cách lắp khuyến nghị, chưa chốt). Sừng lắp giữa: `elbow_lower:=-1.5708 elbow_upper:=1.5708` — khi đó bảng ở 22.5cm KHÔNG vẽ được, phải sửa `BOARD_D` ≈ 0.312 và `BOARD_BELOW_J1` ≈ 0.118 trong `newarm_make_sim.py` rồi chạy lại.
+- Launch có bridge `/clock` (sim cũ không có) vì `newarm_sim_draw` dùng giờ sim.
+- Không có collision trên tay và bảng (bút đi xuyên bảng), tắt trọng lực — giống sim tay cũ.
+
+**Kết quả chạy thử (headless, 3 lần):** bảng ước lượng từ camera lệch 1–4mm so với vị trí đặt; bám hình vuông lệch TB 0.01mm / max 0.5mm (ở góc); TF `pen_tip` của Gazebo khớp `fk_newarm` 0.001mm; khuỷu chạy tới 102° (chỉ có khi lắp [-30°,150°]). Do sai số ước lượng bảng, đầu bút lún 2.7–4.5mm so với mặt bảng thật — nằm trong hành trình lò xo bút nhưng nên biết.
+
+**Chưa làm:** luồng train RL/PID (`train_visual_servoing.py`, `rl_environment.py`, `pid_tuning_env.py`, `control_backends.py`, `neural_ik.py`) và digital twin (`gazebo_state_mirror.py`…) vẫn viết cứng 6 khớp `Revolute 20…30` + `fk_ik_utils` của tay cũ.
 
 ## 3. Ghi chú kỹ thuật cố định: FK cho robot 4-DOF (tay CŨ — `--arm old4dof`)
 
@@ -121,10 +175,49 @@ Không cần truyền `PI_HOST`/`PI_HOME` gì thêm — mặc định `piros2@19
 
 **Lưu ý khi tự chạy:** tôi (Claude) không có mật khẩu/khoá SSH vào Pi của bạn nên không tự chạy `scp`/`ssh` thật được — bạn cần tự chạy lệnh trên trong terminal của mình (sẽ được hỏi mật khẩu SSH bình thường).
 
+**`wicom_roboarm` chưa nằm trong `deploy_to_pi.sh`:** `config/servos_newarm.yaml` + `launch/wicom_roboarm.launch.py` (đã thêm arg `servo_config`) phải tự chép vào package `wicom_roboarm` trên Pi rồi `colcon build --packages-select wicom_roboarm` (package cài `config/` qua CMake nên phải build lại mới thấy file yaml mới).
+
 ### 4b. Xác nhận vật lý
 
-- Nhìn/đo trực tiếp góc servo 4 (wrist_roll) và servo 6 (pen) đang khoá cứng trên robot thật, so với mục 3 ở trên.
-- **[PI]**: cắm C920 vào cổng USB 3.0 (viền xanh) của Pi 4, không dùng USB 2.0.
+- **[PI]**: cắm camera vào cổng USB 3.0 (viền xanh) của Pi 4, không dùng USB 2.0.
+- Tay cũ (`--arm old4dof`): nhìn/đo góc servo 4 (wrist_roll) và servo 6 (pen) đang khoá cứng, so với mục 3.
+- Tay mới: làm mục 4c.
+
+### 4c. Bước 0b — Bring-up tay mới (làm khi lắp tay, TRƯỚC Phase 3)
+
+Mục đích: bảo đảm robot thật khớp mô hình FK (home, chiều quay, chiều dài bút) trước khi đưa FK vào hand-eye. Mọi kết quả ghi vào `ros2_ws/src/visual_servoing/scripts/rl/newarm_servo_calib.json`; `fk_newarm.py` tự nạp file này nên Phase 3/4/5 dùng đúng số, không sửa code. Thêm `--dry-run` vào `home`/`directions`/`fk-check` để xem trước lệnh mà không cần robot.
+
+**Quy ước đứng nhìn** cho mọi mô tả chiều: đứng đối diện tay sao cho **bánh răng servo khuỷu nằm bên TRÁI** (sừng servo vai bên phải) → "phía trước" của tay (−Y) là **về phía bạn**.
+
+**Terminal 1 [PI]** — driver với cấu hình tay mới (4 servo, kênh 0/1/2/3):
+
+```bash
+ros2 launch wicom_roboarm wicom_roboarm.launch.py servo_config:=servos_newarm.yaml
+```
+
+**Terminal 2 [PI]**:
+
+```bash
+cd ~/aeroscript
+# 1. (Khuyến nghị) khuỷu lắp lệch để có dải [-30°,150°] thay vì ±90° — vùng vẽ 62 vị trí thay vì 14:
+python3 scripts/newarm_bringup.py set --joint elbow --home 30
+
+# 2. Đưa 4 servo về home RỒI MỚI gắn sừng/khâu: tay treo thẳng xuống, cẳng tay thẳng hàng bắp tay
+python3 scripts/newarm_bringup.py home
+
+# 3. Xác nhận chiều quay từng khớp (nhích 15°, trả lời y/n, tự ghi inverted). Chạy lại tới khi cả 4 đều "y"
+python3 scripts/newarm_bringup.py directions
+
+# 4. Đo thước kẹp gốc hộp bút -> đầu bút (CAD 62.5mm), ghi lại (m, âm = xuống)
+python3 scripts/newarm_bringup.py set --tool-offset 0 0 -0.0625
+
+# 5. Kiểm FK bằng thước: 6 tư thế, nhập số đo (phía_bạn, phải, lên — mm, tính từ điểm dưới đầu bút ở home)
+python3 scripts/newarm_bringup.py fk-check
+```
+
+**Đạt:** `fk-check` lệch lớn nhất **< 10mm** → sang Phase 3. Chưa đạt: lệch đều theo 1 khớp thường là sai home khớp đó (sửa bằng `set --joint <khớp> --home <độ>`); lệch gấp ~1.5 lần ở 1 khớp là servo bản 270° (`set --joint <khớp> --range 270`).
+
+**Lưu ý:** file calib sinh ra trên Pi; muốn chạy phân tích (`newarm_board_reach.py`) trên máy dev với số thật thì `scp` file đó về cùng đường dẫn. Trước khi cấp điện lần đầu, gập tay bằng tay để chắc cửa sổ servo không vượt chỗ đụng cơ khí (khuỷu −110°..+160°, vai ±118° theo quét STL).
 
 ## 5. Phase 1 — Sửa kiến trúc ống dẫn ảnh trên Pi — ✅ ĐÃ XONG, đã chạy & đo thật trên Pi (2026-09-23)
 
@@ -132,7 +225,7 @@ Không cần truyền `PI_HOST`/`PI_HOME` gì thêm — mặc định `piros2@19
 
 **Đã sửa:** bắt frame bằng OpenCV trực tiếp trong cùng tiến trình với node xử lý (bỏ hẳn `usb_cam`→DDS→`cv_bridge`), luôn lấy frame mới nhất, drop frame cũ nếu xử lý chưa xong. Đổi định dạng bắt ảnh từ YUYV thô sang **MJPEG** (YUYV ở 720p ~28MB/s dễ nghẽn USB, MJPEG nén sẵn nhẹ hơn nhiều lần). Ảnh debug tách thành luồng phụ riêng, không chặn luồng chính publish XYZ.
 
-**Độ phân giải chọn: 1280×720 (720p) MJPEG**, không lên 1080p — đủ chi tiết cho model detect trong ROI nhỏ (Phase 4), trong khi 1080p tốn gần gấp đôi CPU Pi 4 không cần thiết. **Camera Logitech C920 + Pi 4 Model B**: hoạt động tốt, C920 hỗ trợ MJPEG sẵn tới 1080p/30fps, Pi 4 Model B có 2 cổng USB 3.0 dư băng thông.
+**Độ phân giải chọn: 1280×720 (720p) MJPEG**, không lên 1080p — đủ chi tiết cho model detect trong ROI nhỏ (Phase 4), trong khi 1080p tốn gần gấp đôi CPU Pi 4 không cần thiết. **Camera Logitech C930e + Pi 4 Model B** (đã xác nhận 2026-10-01 là camera deploy; các chỗ ghi "C920" trong tài liệu cũ là tên dự kiến ban đầu): hoạt động tốt, hỗ trợ MJPEG sẵn tới 1080p/30fps, Pi 4 Model B có 2 cổng USB 3.0 dư băng thông.
 
 **Terminal 1 [PI]** — chạy node xử lý ảnh chính:
 
@@ -305,13 +398,80 @@ Dòng 320 khớp số đo thật → phần dự phóng đáng tin.
 
 **⚠️ Đường export TFLite đang hỏng:** `ultralytics 8.4.160` bỏ `format='tflite'`, chuyển sang `format='litert'` dùng `ai-edge-torch` vốn đòi **torch ≥ 2.11** (venv có 2.9.1) → lỗi `cannot import name 'ScalingType' from 'torch.nn.functional'`. Tạm thời dùng **ONNX** cho việc đo tốc độ. Model cuối cùng vẫn nên có bản TFLite (nhanh hơn ONNX ~25-30% trên Pi, không phải ~2x — xem mục 5b) — khi đó chọn 1 trong: nâng torch ≥2.11, hoặc hạ ultralytics về 8.3.x (đường export cũ qua `onnx2tf`, đã có sẵn `tensorflow 2.20` trong venv). **`train_pose.py` đã sửa để export ONNX trước (luôn chạy được), TFLite thử sau và bắt lỗi gọn nếu hỏng** — không chặn việc có model dùng được ngay sau khi train.
 
-## 6. Phase 2 — Calibrate camera — ✅ Đã chạy thật với C930e (test), lỗi 0.24px
+## 5d. Kết quả 2026-09-30: đạt 15fps, sửa XYZ, sửa mất phát hiện
+
+### Lệnh chạy hiện tại trên Pi
+
+```bash
+v4l2-ctl -d /dev/video0 --set-ctrl=brightness=160,contrast=128,gain=120   # reset mỗi lần cắm lại camera
+cd ~/aeroscript
+python3 -u run_pi4_ros2.py --model pen_pose_192_sc.tflite --device /dev/video0 \
+    --width 640 --height 360 --fourcc MJPG --conf 0.3 --threads 2 2>&1 | grep -E "⏱️|PEN|Ready|Calib|🔎|❌"
+```
+
+Hướng dẫn đầy đủ (web_video_server, link stream, đọc log, đo tài nguyên): `README.md`.
+
+### Số đo thật trên Pi 4
+
+| Hạng mục | Kết quả |
+| --- | --- |
+| Tốc độ | **15fps** cả luồng; model 55ms/frame (`pre` 2.4 + `invoke` 52 + `decode` 0.8) ≈ 18fps thuần model. imgsz 224: ~12.8fps (78ms) |
+| Nhận diện | **97-100%** frame khi bút trong khung (trước: 69%); 0 frame thiếu keypoint, 0 lỗi PnP |
+| CPU | node ~190% (≈2/4 nhân); `web_video_server` ~17%; cả máy ~55% (đo 120s bằng `scripts/monitor_resources.py`) |
+| RAM / nhiệt | cả máy ~540MB / 3.8GB; node ~160MB (htop); 59-65°C (ngưỡng hạ xung ~80°C). Không dùng GPU |
+
+### Đã sửa trong `run_pi4_ros2.py`
+
+- **XYZ sai:** bản cũ viết cứng `K=[[770,0,320],[0,770,240]]` (đoán cho 640×480), không đọc calib → ở 640×360 Z lớn gấp ~1.7 lần, Y lệch. Giờ `load_camera_calib()` nạp `calib/c920_720p.npz` (`--calib`) và nhân K theo độ phân giải thật. Chỉ đúng khi CÙNG tỉ lệ khung 16:9; 640×480 là 4:3 → phải calib riêng.
+- **Trễ 0.5-1s:** Kalman chỉnh cho 2.8fps; `Q = pn*dt` nên ở 15fps bộ lọc gần như bỏ qua số đo. Chỉnh lại `process_noise` 3D = 200, 2D = 30 (nhân `--trust-motion`); `--no-filter` để so.
+- **TFLite NCHW:** export của ultralytics 8.4.160 (litert) là `[1,3,H,W]`, khác bản cũ NHWC → node tự nhận layout. Export TFLite giờ chạy được — ghi chú "đường export đang hỏng" ở cuối mục 5c không còn đúng.
+- **Chẩn đoán:** dòng `🔎` mỗi 75 frame (tỉ lệ bắt được + lý do mất: không thấy bút / thiếu keypoint / PnP lỗi); `conf_max` trong dòng `⏱️`.
+- **Overlay trên stream:** XYZ đầu bút so với camera (X phải, Y xuống, Z ra trước), E2E latency (cam→XYZ, cam→ảnh), FPS, CPU, RAM, nhiệt độ, ping (`--ping-host`). Cũng có trong JSON port 8081.
+
+### Độ phân giải bắt ảnh: 640×360 (thử nghiệm)
+
+Trước đây: 640×480 (luồng usb_cam cũ) và 1280×720. Chọn 640×360 vì cùng tỉ lệ với calib 720p, và model chỉ nhận 192×192 nên ảnh lớn hơn không giúp model thấy rõ hơn, chỉ tốn giải mã. **Có thể tăng lại (720p/1080p) khi dùng ROI theo FK (Phase 4)** — cắt vùng quanh bút từ ảnh lớn giữ được chi tiết cho bút nhỏ/xa.
+
+### Mất phát hiện: nguyên nhân và cách đã sửa
+
+- **Nguyên nhân:** cả 1860 nhãn cũ có bút đứng thẳng (nghiêng ≤16°), bút cao ≥34% khung. Video chạy thật: mất 31% thời gian, đoạn dài nhất 9.6s (bút nghiêng / nằm ngang / chúc xuống / ở xa). Trên khung cảnh mới, model cũ chỉ có box ở 7% khung.
+- **Dữ liệu mới (30/9):** 6 video `datasets/raw_videos/nghieng_xa_*` (bút cầm tay, nghiêng 0-360°, chúc xuống, xa) → 2373 ảnh → lấy 1/3 = 792 → **590 ảnh có nhãn** gộp vào `dataset_split` (tiền tố `local_`, train +503 / val +87; val = 15% CUỐI mỗi video). Chạy lại `make_split.py` sẽ xoá phần gộp → chạy lại `label_local.py --merge`.
+- **Model `pen_pose_192_sc`** (`train_pose.py --imgsz 192 --scale 0.8`): khung test thấy bút 7% → **98.7%**, 0 lần nhận nhầm nền; val cũ 0.987 → 0.982. Sai số điểm trên val đã duyệt (px ở 1280×720, trung vị): Tip 14 / Tail 9 / L 8 / R 7.
+
+**Quy trình thêm dữ liệu** (lệnh trong README mục 9):
+
+1. `record_dataset.py record --cam 2 --focus -1` → `extract --every 6 --drop-blur-pct 20`
+2. `.venv-train/bin/python scripts/autolabel.py --dirs "<tag>_*" --every 3` — gán nhãn tự động: model 224 CŨ chạy trên ô cắt 360/540px × 12 góc xoay, chỉ nhận khi ≥3 ô/góc đồng thuận. Lượt 2 cho ảnh sót: `--only-missing --sizes 360,540,720 --min-votes 2`.
+3. `label_local.py --dirs "<tag>_*" --every 3 --review` — duyệt, kéo sửa điểm.
+4. **Chuẩn hoá L/R theo BÚT** trước khi gộp (xem dưới), rồi `label_local.py ... --merge`.
+5. Train, rồi đo trên khung test (đoạn cuối mỗi video, chạy nguyên khung ở 192) trước khi đưa lên Pi.
+
+**Quy ước L/R — theo BÚT, không theo ảnh:** xoay ảnh cho mũi bút hướng lên thì L bên trái (`cross(tail-tip, L-mid) > 0`), khớp `PEN_3D`. Bút chúc xuống → L nằm bên PHẢI ảnh. Lần duyệt tay 30/9 đã đổi nhầm L↔R ở 142 ảnh (đã chuẩn hoá lại). Lẫn quy ước không làm sai XYZ đầu bút (bút đối xứng quanh trục) nhưng làm tụt độ tin cậy L/R → node bỏ frame.
+
+### Đã thử và LOẠI TRỪ (đừng thử lại)
+
+- **`train_pose.py --degrees 180` trên dữ liệu cũ** (`pen_pose_192_rot_sc`): thấy bút 50% nhưng nhận nhầm vật xanh to (cái thuyền) thành bút ở 117/384 khung → KHÔNG deploy.
+- **Gán nhãn tự động bằng cách chạy thẳng model lên cả khung:** `rot_sc` khoanh cái thuyền ở gần hết ảnh; model cũ thì mù (7%). Phải cắt ô + xoay như `autolabel.py`.
+- **Kiểm tra nhãn bằng tỉ lệ hình học** (trung điểm L-R ở ~69% Tip→Tail): không bắt được lỗi nào — model pose luôn ra hình hợp lệ, sai là sai cả khối.
+
+### Còn tồn tại
+
+- Frame bút chạm mép ảnh cho XYZ nhảy; chưa đo sai số XYZ bằng thước; focus chưa khoá; dữ liệu vẫn là bút cầm tay; ~200 ảnh khó nhất (bút sát camera, tay che nhiều) chưa có nhãn.
+- **Camera:** đã xác nhận 2026-10-01 — con **Logitech C930e** này là camera deploy, calib 0.24px làm với chính nó. File vẫn tên `c920_720p.npz` (tên đặt sẵn).
+
+### Git (2026-09-30)
+
+`CoVip/` nằm trong repo `new_rl_ros2` (remote `emnet` = EmNetLab411, commit `0cdc34c`). Repo riêng cũ của CoVip (DA1_EmbedLab) giữ nguyên trong `CoVip/.git_DA1_EmbedLab/` (đổi tên về `.git` để dùng lại). Không đưa lên git: video, dataset, `.venv-train`, `reports/` (báo cáo chỉ để local). Model cần cho deploy thêm bằng `git add -f`.
+
+## 6. Phase 2 — Calibrate camera — ✅ Xong với camera deploy (C930e), lỗi 0.24px; còn thiếu khoá focus
 
 **Kết quả chạy thật (2026-09-23), camera C930e:** 28/28 ảnh dùng được, reprojection error **0.2422px** (đạt tốt so với mục tiêu <0.5px). File lưu ở `calib/c920_720p.npz`.
 
-**⚠️ Đây là camera TEST (C930e), không phải C920 thật sẽ deploy.** Ma trận K/dist là đặc trưng riêng của từng camera vật lý cụ thể (kể cả 2 máy cùng model cũng khác nhau) — **bắt buộc chạy lại đúng quy trình này với chính con C920 thật** khi có, không dùng lại số vừa ra cho deployment thật. Kết quả hiện tại chỉ có giá trị để: (a) xác nhận toàn bộ pipeline code (`capture`→`compute`→dùng ở Phase 3/4) chạy đúng, (b) tập luyện quy trình chụp trước khi làm với hàng thật.
+**✅ Đã xác nhận (2026-10-01): con C930e này CHÍNH LÀ camera deploy** (gắn lên Pi/drone), không có C920 nào khác. Số calib ở trên dùng được cho chạy thật. File vẫn tên `c920_720p.npz` (tên đặt sẵn, nhiều script trỏ tới nên không đổi). Ma trận K/dist là riêng của từng camera vật lý — chỉ phải calib lại nếu thay con camera khác (kể cả cùng model).
 
-Calibrate trên máy host (laptop) là được, không cần Pi — ma trận K/dist chỉ phụ thuộc camera+lens+độ phân giải. Điều kiện bắt buộc khi làm với C920 thật: **đúng camera vật lý C920** sẽ gắn lên Pi, **đúng 720p MJPEG** sẽ deploy, **khoá focus cố định trước khi chụp, không đổi lại sau đó** (lỡ chạm phải calibrate lại từ đầu).
+**⚠️ Còn thiếu — khoá focus:** calib chỉ đúng ở đúng mức lấy nét lúc chụp bàn cờ, mà node trên Pi đang chạy autofocus (`focus_automatic_continuous=1`). Giá trị focus lúc calib 23/9 không được lưu trong file `.npz`; lệnh mẫu bên dưới dùng `--focus 20`. Cách xử lý: chọn 1 giá trị focus, calib lại với `--focus N`, rồi luôn chạy `run_pi4_ros2.py --focus N` và `record_dataset.py record --focus N` cùng giá trị đó.
+
+Calibrate trên máy host (laptop) là được, không cần Pi — ma trận K/dist chỉ phụ thuộc camera+lens+độ phân giải. Điều kiện bắt buộc: **đúng camera vật lý** sẽ gắn lên Pi, **cùng tỉ lệ khung 16:9** với lúc chạy (calib 720p, chạy 640×360 được — node tự quy đổi K), **khoá focus cố định trước khi chụp, không đổi lại sau đó** (lỡ chạm phải calibrate lại từ đầu).
 
 **[LAPTOP hoặc PI]** (ví dụ dưới đây trên LAPTOP, đỡ SSH):
 
@@ -322,8 +482,7 @@ cd /home/ducanh/new_rl_ros2/CoVip
 # 2a. Chụp ảnh (SPACE lưu khi thấy khung xanh bọc quanh bàn cờ, q để thoát)
 # KHÔNG dùng --device /dev/video0 nếu máy có nhiều camera (laptop thường có
 # sẵn webcam tích hợp ở video0) — mặc định script tự tìm đúng camera rời
-# theo tên thiết bị (--camera-name, mặc định "C930e" khi đang test; đổi
-# thành "C920" khi chuyển sang camera deploy thật):
+# theo tên thiết bị (--camera-name, mặc định "C930e" = camera deploy):
 python3 scripts/calibrate_camera.py capture --camera-name C930e \
     --width 1280 --height 720 --focus 20 --cols 9 --rows 6 \
     --out calib/chessboard_raw
@@ -386,19 +545,17 @@ python3 run_pi4_ros2.py --model best.onnx --device /dev/video0 \
 **Terminal 2 [PI]** — driver servo (node đứng sau `/pca9685_servo/command` và `/pca9685_servo/joint_states`, theo đúng README gốc mục "Set Home"):
 
 ```bash
-ros2 launch wicom_roboarm wicom_roboarm.launch.py servo_config:=servos_assarm.yaml   # tay mới
+ros2 launch wicom_roboarm wicom_roboarm.launch.py servo_config:=servos_newarm.yaml   # tay mới
 ```
 
-**Terminal 3 [PI]** — di chuyển tay robot qua từng tư thế (tay mới `assarm`: 4 khớp `base/shoulder/elbow/wrist_roll`, giữ `j5` cố định; tay cũ: `base/shoulder/elbow/wrist_pitch`, KHÔNG gửi wrist_roll/pen). Với tay mới, nhớ đổi dòng `wrist_pitch` bên dưới thành `wrist_roll`:
+**Terminal 3 [PI]** — di chuyển tay robot qua từng tư thế (tay mới: 4 khớp `base/shoulder/elbow/wrist_roll`, số là độ LỆNH servo 0-180):
 
 ```bash
-ros2 topic pub -r 10 -t 2 /pca9685_servo/command sensor_msgs/msg/JointState "{name:['base'], position:[70.0]}"
-ros2 topic pub -r 10 -t 2 /pca9685_servo/command sensor_msgs/msg/JointState "{name:['shoulder'], position:[110.0]}"
-ros2 topic pub -r 10 -t 2 /pca9685_servo/command sensor_msgs/msg/JointState "{name:['elbow'], position:[95.0]}"
-ros2 topic pub -r 10 -t 2 /pca9685_servo/command sensor_msgs/msg/JointState "{name:['wrist_pitch'], position:[100.0]}"
+ros2 topic pub -r 10 -t 2 /pca9685_servo/command sensor_msgs/msg/JointState \
+  "{name:['base','shoulder','elbow','wrist_roll'], position:[70.0, 120.0, 95.0, 100.0]}"
 ```
 
-Đổi 4 con số thành 1 tư thế mới mỗi lần lặp lại — dàn trải khắp vùng làm việc an toàn, không dồn về 1 góc.
+Đổi 4 con số thành 1 tư thế mới mỗi lần lặp lại — dàn trải khắp vùng làm việc an toàn, không dồn về 1 góc. **Phải đổi cả `wrist_roll` (J4) lẫn `base` và `shoulder`/`elbow`** giữa các mẫu: Tsai-Lenz cần xoay quanh ít nhất 2 trục không song song (J1/J4 quay quanh Z, J2/J3 quanh X). Bút đồng trục J4 nên xoay `wrist_roll` cũng là cách quay marker về phía camera. (Tay cũ `--arm old4dof`: dùng `wrist_pitch` thay `wrist_roll`, KHÔNG gửi wrist_roll/pen.)
 
 **Terminal 4 [PI]** — công cụ thu thập mẫu + giải hand-eye (thay `<cạnh_marker_mm>` bằng số đo thật):
 
@@ -410,7 +567,7 @@ python3 scripts/calibrate_hand_eye.py collect --n-poses 15 \
 
 Quy trình lặp 15 lần: (a) Terminal 3 gửi 4 lệnh set góc cho 1 tư thế mới → (b) đợi robot dừng hẳn + marker hiện rõ trong khung hình → (c) Terminal 4 nhấn Enter ghi mẫu (script tự báo nếu chưa thấy marker, không ghi mẫu lỗi) → lặp lại (a).
 
-Xong đủ 15 mẫu, Terminal 4 tự giải và lưu `calib/T_cam_to_base.npy`. Nếu nghi ngờ sai số: chiếu `fk_4dof(q)` qua `T_cam_to_base` ra ảnh, so với vị trí marker thật, lệch phải **< 1-2cm**.
+Xong đủ 15 mẫu, Terminal 4 tự giải và lưu `calib/T_cam_to_base.npy`. Nếu nghi ngờ sai số: chiếu điểm FK (tay mới `fk_newarm.fk_tip`, tay cũ `fk_4dof`) qua `T_cam_to_base` ra ảnh, so với vị trí marker thật, lệch phải **< 1-2cm**.
 
 Xong bước này: Ctrl+C tắt Terminal 1-2, **gỡ marker khỏi robot** — không dùng khi vận hành thật.
 
@@ -423,7 +580,7 @@ Nhắc lại vấn đề gốc từ mục 1: model `best.onnx` hiện có đư�
 **Phase 4 giải quyết vấn đề bằng cách khác: không để model phải "tìm" bút trong cả khung hình nữa — cho nó biết trước gần đúng bút ở đâu.** Cụ thể pipeline `fk_roi_predictor.py` làm:
 
 1. Đọc góc 4 khớp hiện tại của robot từ `/pca9685_servo/joint_states` (robot luôn biết chính nó đang ở tư thế nào).
-2. Tính `fk_4dof(q)` → ra toạ độ 3D thật của đầu bút (`bibut_1`) trong hệ toạ độ robot (mét) — đây là hình học cơ khí thuần tuý, không liên quan gì đến ảnh/camera.
+2. Tính FK (tay mới: `fk_newarm.fk_tip(q)`, chọn bằng `--arm`; tay cũ: `fk_4dof(q)`) → ra toạ độ 3D thật của đầu bút trong hệ toạ độ robot (mét) — đây là hình học cơ khí thuần tuý, không liên quan gì đến ảnh/camera.
 3. Nhân với `T_cam_to_base` (kết quả Phase 3) để đổi toạ độ 3D đó sang hệ toạ độ của camera.
 4. Chiếu điểm 3D (hệ camera) qua ma trận nội tại `K` (kết quả Phase 2) → ra đúng 1 toạ độ pixel (u, v) trên ảnh 1280×720 — đây chính là **dự đoán trước bút sẽ xuất hiện ở đâu trên ảnh**, tính toán thuần bằng hình học, hoàn toàn không cần chạy model hay nhìn ảnh.
 5. Cắt 1 ô nhỏ ~300×300px quanh (u, v) đó.
@@ -441,7 +598,7 @@ Nhắc lại vấn đề gốc từ mục 1: model `best.onnx` hiện có đư�
 **Terminal 1 [PI]** — bật driver servo (nếu chưa chạy):
 
 ```bash
-ros2 launch wicom_roboarm wicom_roboarm.launch.py
+ros2 launch wicom_roboarm wicom_roboarm.launch.py servo_config:=servos_newarm.yaml   # tay mới
 ```
 
 **Terminal 2 [PI]**:
@@ -467,7 +624,12 @@ Việc còn lại: gộp `fk_roi_predictor.py` (crop ROI) + model detect trong R
 
 **⚠️ Lỗi đã ghi nhận (2026-09-23), CHƯA SỬA — để xử lý khi làm Phase 6:** test bằng `test_roi_detection.py` cho thấy model detect đúng cả 4 điểm (specs đạt), nhưng **2 điểm Left/Right bị lẫn/sai chiều** so với hướng thật của bút trong ảnh — theo hình, Left phải nằm bên trái marker, Right phải nằm bên phải marker, nhưng model ra ngược. Cần kiểm lại khi đánh giá model ở Phase 6 (có thể do quy ước gán nhãn train trước đây không nhất quán, hoặc do hướng cầm bút khi test ngược chiều lúc train).
 
-Trước mắt dùng thẳng `best.onnx` hiện có để detect trong ROI — ảnh crop nhỏ khiến bút chiếm tỉ lệ lớn, gần giống điều kiện model đã học, có thể chưa cần train lại ngay.
+**Cập nhật 2026-09-30 (chi tiết mục 5d):**
+- Model dùng trong ROI giờ là **`pen_pose_192_sc`**, không phải `best.onnx` cũ.
+- Lỗi L/R ở trên: quy ước đã chốt là **theo BÚT** (mũi hướng lên thì L bên trái) và toàn bộ nhãn mới đã chuẩn hoá. Vẫn cần chạy lại `test_roi_detection.py` với model mới để xác nhận lỗi đã hết.
+- Đã thêm 590 ảnh **cầm tay** (bút nghiêng/chúc xuống/xa) vì model cũ mù với các tư thế đó — đây là bản vá cho vision chạy độc lập, KHÔNG thay cho dữ liệu bút gắn tay robot mô tả bên dưới. 1945 ảnh cầm tay của 5 phiên cũ vẫn không dùng.
+
+Trước mắt dùng model hiện có để detect trong ROI — ảnh crop nhỏ khiến bút chiếm tỉ lệ lớn, gần giống điều kiện model đã học, có thể chưa cần train lại ngay.
 
 **Toàn bộ video cầm tay cũ (5 phiên, 1945 ảnh) + việc gán nhãn 260 ảnh dở dang: dừng hẳn, không dùng làm dữ liệu train chính nữa.** Dữ liệu đúng phải quay theo đúng bối cảnh triển khai — bút gắn trên cánh tay robot, camera ở tư thế cố định như treo trên drone khi bay (không lắc), chỉ thay đổi bằng cách cho robot di chuyển qua nhiều tư thế khớp.
 
@@ -492,14 +654,19 @@ Dữ liệu này chỉ dùng khi thật sự cần cải thiện model, chưa c�
 - Mới: `CoVip/scripts/{calibrate_camera,calibrate_hand_eye,fk_roi_predictor,test_roi_detection,deploy_to_pi.sh}`, `CoVip/calib/*.npz|*.npy` (tạo ra ở Phase 2/3)
 - Mới (chẩn đoán hiệu năng Pi, mục 5b): `CoVip/scripts/benchmark_tflite.py` (đo tốc độ suy luận thuần, cô lập), `CoVip/scripts/inspect_tflite.py` (in layout output thật của file `.tflite` — dùng để tìm bug toạ độ chuẩn hoá [0,1])
 - Dataset train lại (mục 5c): `CoVip/COVIP_training.v4i.yolov8/` — 2445 ảnh + nhãn 4 keypoint
+- **Vision 30/9 (mục 5d):** model đang dùng `CoVip/imgsz_probe/pen_pose_192_sc.onnx` + `runs/pen_pose_192_sc/weights/best.tflite`; `CoVip/imgsz_probe/train_pose.py` (`--degrees`, `--scale`); `CoVip/scripts/{autolabel.py, label_local.py, record_dataset.py, monitor_resources.py}`; nhãn mới ở `CoVip/datasets/local_labels/` (không lên git); hướng dẫn chạy `CoVip/README.md`
+- **Bảng workspace:** `ros2_ws/src/visual_servoing/aruco_markers/{make_workspace_board.py, workspace_board_newarm_A4.pdf}`, `ros2_ws/src/visual_servoing/config/vision_board_newarm.yaml`, `ros2_ws/.../rl/newarm_draw_region.py`
+- **Tay mới (mục 2b/4c):** `ros2_ws/src/visual_servoing/scripts/rl/{fk_newarm.py, newarm_board_reach.py, newarm_dh_table.py}` + `newarm_servo_calib.json` (sinh ra khi bring-up), `ros2_ws/src/visual_servoing/vs_lib/core/kinematics_newarm.py`, `CoVip/scripts/{arm_models.py, newarm_bringup.py}`, `wicom_roboarm/config/servos_newarm.yaml`, `wicom_roboarm/launch/wicom_roboarm.launch.py` (arg `servo_config`). Thiết kế gốc: `ref/newarm_final_description-20261001T060843Z-1-001/` (`ref/` bị gitignore — chỉ có trên máy dev)
+- **Sim tay mới (mục 2c):** `ros2_ws/src/visual_servoing/{launch/newarm_sim.launch.py, urdf/newarm/, meshes/newarm/, models/newarm_board/, worlds/visual_servoing_newarm.world, config/controllers_newarm.yaml, scripts/rl/newarm_make_sim.py, scripts/drawing/newarm_sim_draw.py}`
 - Đã sửa: `CoVip/run_pi4_ros2.py` (Phase 1), `ros2_ws/src/visual_servoing/scripts/rl/fk_ik_utils.py` (thêm `fk_4dof`, `fk_matrix`, `fk_4dof_matrix`)
 - Đọc/tái dùng, không sửa: `config/T_cam_to_base_THEORETICAL.npy` (sẽ thay bằng bản đo thật), `CoVip/scripts/pen_webcam_onnx.py`, `CoVip/pen_models/best.onnx`
 - **Không dùng:** `CoVip/pen_models/run_pi4_ros2.py` (bản cũ, xem mục 4a), `vs_lib/vision/vision_aruco_detector.py` (viết cho board 4-marker khác dictionary, xem mục 7), `CoVip/scripts/publish_camera_info.py` (chỉ cần khi dùng `vision_aruco_detector`; `calibrate_hand_eye.py` giờ đọc thẳng `calib/c920_720p.npz`, không cần topic `/camera_info` nữa — giữ lại file phòng khi cần publish camera_info cho việc khác)
 
 ## 13. Verification — tiêu chí đạt của từng Phase
 
-- **Phase 1:** độ trễ đầu-cuối trên Pi giảm rõ rệt so với 500-1000ms/7-8fps ban đầu (chưa cần đạt mục tiêu cuối).
+- **Phase 1:** độ trễ đầu-cuối trên Pi giảm rõ rệt so với 500-1000ms/7-8fps ban đầu (chưa cần đạt mục tiêu cuối). **→ Đạt 30/9: 15fps, bắt 97-100% khi bút trong khung (mục 5d).** Số E2E latency đọc trên overlay stream, chưa ghi lại con số chính thức.
 - **Phase 2:** reprojection error của `cv2.calibrateCamera` < 0.5px.
-- **Phase 3:** chiếu `fk_4dof(q)` qua `T_cam_to_base` ra ảnh, lệch so với marker thật < 1-2cm ở vài tư thế kiểm tra.
+- **Bước 0b (tay mới):** `newarm_bringup.py directions` cả 4 khớp đúng chiều; `fk-check` lệch lớn nhất < 10mm.
+- **Phase 3:** chiếu điểm FK qua `T_cam_to_base` ra ảnh, lệch so với marker thật < 1-2cm ở vài tư thế kiểm tra.
 - **Phase 4+5:** đặt bút ở khoảng cách/độ nén biết trước (đo tay bằng thước), so với kết quả pipeline, sai số mục tiêu vài mm.
 - **Sau Phase 5:** đo lại độ trễ đầu-cuối trên Pi lần cuối, mục tiêu ≤150ms, fps ≥15.

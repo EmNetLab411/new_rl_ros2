@@ -78,6 +78,19 @@ class RobustPBVSNode(Node):
         # Web-video-server friendly monitor stream
         self.declare_parameter('monitor_image_topic', '/pbvs/monitor_image')
         self.declare_parameter('monitor_metrics_topic', '/pbvs/monitor_metrics')
+        # Board geometry (defaults = original 120mm board). The printed newarm
+        # workspace board uses offset 0.075 / size 0.030 — see
+        # config/vision_board_newarm.yaml.
+        self.declare_parameter('board_marker_offset_m', OFFSET)
+        self.declare_parameter('board_marker_size_m', MARKER_SIZE)
+        _o = float(self.get_parameter('board_marker_offset_m').value)
+        _h = float(self.get_parameter('board_marker_size_m').value) / 2
+        self.board_config = {
+            0: get_marker_corners_3d(-_o,  _o, _h),
+            1: get_marker_corners_3d( _o,  _o, _h),
+            2: get_marker_corners_3d( _o, -_o, _h),
+            3: get_marker_corners_3d(-_o, -_o, _h),
+        }
         
         # Get parameters
         self.image_topic = self.get_parameter('image_topic').value
@@ -207,9 +220,9 @@ class RobustPBVSNode(Node):
         if ids is not None and len(ids) > 0:
             for i in range(len(ids)):
                 curr_id = ids[i][0]
-                if curr_id in BOARD_CONFIG_3D:
+                if curr_id in self.board_config:
                     curr_corners_2d = corners[i][0]
-                    curr_corners_3d = BOARD_CONFIG_3D[curr_id]
+                    curr_corners_3d = self.board_config[curr_id]
                     for pt in curr_corners_2d: image_points_collected.append(pt)
                     for pt in curr_corners_3d: object_points_collected.append(pt)
 

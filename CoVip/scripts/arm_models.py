@@ -1,8 +1,9 @@
 """
 Chọn mô hình cánh tay cho các script vision (fk_roi_predictor, calibrate_hand_eye).
 
-    assarm  (mặc định) — tay mới, 5 khớp base/shoulder/elbow/wrist_roll/pen
-            (bút gắn trên servo J5 thay gripper), FK trong ros2_ws/.../rl/fk_assarm.py
+    newarm  (mặc định) — tay mới (thiết kế cuối newarm_final), 4 khớp
+            base/shoulder/elbow/wrist_roll, bút gắn cứng đồng trục J4,
+            FK trong ros2_ws/.../rl/fk_newarm.py
     old4dof — tay 6-DOF cũ khoá wrist_roll/pen, FK fk_4dof trong fk_ik_utils.py
 
 Mỗi Arm cung cấp:
@@ -20,30 +21,29 @@ _FK_UTILS_DIR = (Path(__file__).resolve().parent.parent.parent
                  / "ros2_ws" / "src" / "visual_servoing" / "scripts" / "rl")
 sys.path.insert(0, str(_FK_UTILS_DIR))
 
-ARM_CHOICES = ("assarm", "old4dof")
+ARM_CHOICES = ("newarm", "old4dof")
 
 
-class AssArm:
-    name = "assarm"
+class NewArm:
+    name = "newarm"
 
     def __init__(self, tool_offset=None):
-        import fk_assarm
-        self._fk = fk_assarm
-        self.joint_names = fk_assarm.JOINT_NAMES + (fk_assarm.J5_NAME,)
-        # None -> tính theo góc J5 thật (tool_offset_j5); đặt số -> ghi đè cố định
-        self.tool_offset = tuple(tool_offset) if tool_offset is not None else None
+        import fk_newarm
+        self._fk = fk_newarm
+        self.joint_names = fk_newarm.JOINT_NAMES
+        self.tool_offset = tuple(tool_offset) if tool_offset is not None else fk_newarm.TOOL_OFFSET
 
     def q_from_servo_degs(self, degs):
-        return [self._fk.servo_deg_to_q(n, d) for n, d in zip(self.joint_names, degs)]
+        return self._fk.servo_degs_to_q(degs)
 
     def hand_eye_matrix(self, q):
-        # Khung giá bút (sau J5) — marker gắn trên giá bút. Không phụ thuộc
-        # vị trí đầu bút: Tsai-Lenz tự triệt tiêu offset cố định marker<->giá.
-        return np.array(self._fk.fk_pen_matrix(q[:4], q[4]))
+        # Khung hộp bút hopbut_1 (sau J4) — marker dán trên hộp bút/đĩa gắn
+        # bút. Không phụ thuộc TOOL_OFFSET: Tsai-Lenz tự triệt tiêu offset cố
+        # định marker<->hộp bút.
+        return np.array(self._fk.fk_flange_matrix(q))
 
     def tip_point(self, q):
-        tool = self.tool_offset if self.tool_offset is not None else self._fk.tool_offset_j5(q[4])
-        return self._fk.fk_tip(q[:4], tool)
+        return self._fk.fk_tip(q, self.tool_offset)
 
 
 class Old4Dof:
@@ -70,8 +70,8 @@ class Old4Dof:
 
 
 def make_arm(name, wrist_roll_deg=90.0, pen_deg=90.0, tool_offset=None):
-    if name == "assarm":
-        return AssArm(tool_offset=tool_offset)
+    if name == "newarm":
+        return NewArm(tool_offset=tool_offset)
     if name == "old4dof":
         return Old4Dof(wrist_roll_deg=wrist_roll_deg, pen_deg=pen_deg)
     raise ValueError(f"arm không hợp lệ: {name} (chọn {ARM_CHOICES})")
@@ -94,14 +94,14 @@ def joint_states_to_servo_degs(names, positions, order):
 
 
 def add_arm_args(ap):
-    ap.add_argument("--arm", choices=ARM_CHOICES, default="assarm",
-                    help="Mô hình cánh tay (mặc định assarm = tay mới)")
+    ap.add_argument("--arm", choices=ARM_CHOICES, default="newarm",
+                    help="Mô hình cánh tay (mặc định newarm = tay mới)")
     ap.add_argument("--wrist-roll-deg", type=float, default=90.0,
                     help="[old4dof] góc khoá servo wrist_roll")
     ap.add_argument("--pen-deg", type=float, default=90.0,
                     help="[old4dof] góc khoá servo pen")
     ap.add_argument("--tool-offset", type=float, nargs=3, default=None, metavar=("X", "Y", "Z"),
-                    help="[assarm] vector Plate_1 -> đầu bút (m), mặc định fk_assarm.TOOL_OFFSET")
+                    help="[newarm] vector hopbut_1 -> đầu bút (m), mặc định fk_newarm.TOOL_OFFSET")
 
 
 def arm_from_args(args):

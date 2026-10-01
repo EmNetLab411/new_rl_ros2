@@ -84,9 +84,9 @@ def _self_test(arm):
     ])
     # T_cam_to_base giả lập — chỉ để kiểm logic, không phải vị trí camera thật.
     # Tay cũ: đầu bút ở z~0, camera z=0.5 nhìn xuống (-Z; Y_cam đảo theo quy
-    # ước). Tay mới (assarm) treo từ z=0.59 xuống, đầu bút ở z~0.1, camera giả
+    # ước). Tay mới (newarm) treo từ z=0.59 xuống, đầu bút ở z~0.1, camera giả
     # lập đặt ở z=-0.4 nhìn LÊN (+Z) để điểm luôn nằm trước camera.
-    if arm.name == "assarm":
+    if arm.name == "newarm":
         T_fake = np.array([
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],

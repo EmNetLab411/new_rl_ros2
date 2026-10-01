@@ -1,0 +1,15 @@
+# Bảng workspace IN THẬT cho tay mới (newarm): aruco_markers/workspace_board_newarm_A4.pdf
+# DICT_4X4_1000, ID 0-3 (0 trên-trái, 1 trên-phải, 2 dưới-phải, 3 dưới-trái),
+# marker 30mm, tâm marker cách tâm bảng ±75mm, vùng vẽ 100x100mm ở giữa.
+# Mặc định trong code vẫn là bảng 120mm cũ (khớp world Gazebo) — file này chỉ
+# dùng khi chạy với bảng in thật:
+#   ros2 run visual_servoing vision_aruco_detector --ros-args --params-file <file này>
+vision_aruco_detector:
+  ros__parameters:
+    board_marker_offset_m: 0.075
+    board_marker_size_m: 0.030
+
+robust_pbvs_node:
+  ros__parameters:
+    board_marker_offset_m: 0.075
+    board_marker_size_m: 0.030

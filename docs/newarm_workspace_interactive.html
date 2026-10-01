@@ -1,0 +1,498 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vùng vẽ tay newarm</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: bảng điều khiển phía trên, hai khung nhìn kỹ thuật (thẳng + ngang) cạnh nhau, số đọc bên dưới */
+:root{
+  --bg:#f6f7f8; --panel:#ffffff; --ink:#14181d; --ink2:#55606b; --line:#dfe3e7;
+  --good:#2a78d6; --fade:#d9e7f8; --reach:#dcdfe2; --accent:#e2622b; --marker:#14181d; --marker-edge:#ffffff;
+  --ok:#11794a; --bad:#b3372f; --chip-ok:#e2f3ea; --chip-bad:#f8e5e3;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#13161a; --panel:#1b2026; --ink:#eef1f4; --ink2:#a3adb8; --line:#2c343d;
+  --good:#4a94ee; --fade:#1f3147; --reach:#333b45; --accent:#f07a45; --marker:#eef1f4; --marker-edge:#13161a;
+  --ok:#5fd09a; --bad:#f08a80; --chip-ok:#183527; --chip-bad:#3d201d; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#13161a; --panel:#1b2026; --ink:#eef1f4; --ink2:#a3adb8; --line:#2c343d;
+  --good:#4a94ee; --fade:#1f3147; --reach:#333b45; --accent:#f07a45; --marker:#eef1f4; --marker-edge:#13161a;
+  --ok:#5fd09a; --bad:#f08a80; --chip-ok:#183527; --chip-bad:#3d201d; color-scheme:dark }
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:22px 40px;display:flex;flex-direction:column;gap:16px}
+h1{font-size:22px;font-weight:600;margin:0;text-wrap:balance}
+.lede{color:var(--ink2);margin:4px 0 0;max-width:70ch}
+.controls{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px 22px}
+.ctl{display:flex;flex-direction:column;gap:5px;min-width:0}
+.ctl label,.ctl .lab{font-size:12.5px;color:var(--ink2);display:flex;justify-content:space-between;gap:8px}
+.ctl output{font-family:var(--mono);color:var(--ink);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--good)}
+.seg{display:flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.seg button{flex:1;font:inherit;font-size:13px;padding:6px 4px;border:0;border-right:1px solid var(--line);background:transparent;color:var(--ink2);cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--good);color:#fff}
+button.act{font:inherit;font-size:13.5px;padding:7px 12px;border:1px solid var(--line);border-radius:5px;background:var(--panel);color:var(--ink);cursor:pointer}
+button.act:hover{border-color:var(--good)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+.views{display:grid;grid-template-columns:minmax(0,41fr) minmax(0,58fr);gap:16px}
+@media (max-width:820px){.views{grid-template-columns:1fr}}
+figure{margin:0;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;min-width:0}
+figcaption{font-size:13px;color:var(--ink2);margin-bottom:8px}
+figcaption b{color:var(--ink);font-weight:600}
+canvas{display:block;width:100%;height:auto;touch-action:none;border-radius:3px}
+#front{cursor:crosshair} #v3d{cursor:grab} #v3d:active{cursor:grabbing}
+.figrow{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.figrow figcaption{margin:0}
+.seg.small{flex:none} .seg.small button{padding:5px 10px;flex:none}
+.below{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px}
+@media (max-width:820px){.below{grid-template-columns:1fr}}
+.read{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;min-width:0}
+.chip{display:inline-block;font-size:13px;font-weight:500;padding:3px 9px;border-radius:999px}
+.chip.ok{background:var(--chip-ok);color:var(--ok)} .chip.bad{background:var(--chip-bad);color:var(--bad)}
+.chip.mid{background:var(--reach);color:var(--ink)}
+.panel-h{font-size:13px;font-weight:600;margin:0 0 10px;grid-column:1/-1;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
+.panel-h span{font-weight:400;color:var(--ink2)}
+.joints{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
+.ctl .sub{font-size:12px;color:var(--ink2);display:flex;justify-content:space-between;font-family:var(--mono)}
+.why{color:var(--ink2);font-size:13.5px;margin:8px 0 12px;min-height:2.9em}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+td,th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+th{font-weight:500;color:var(--ink2);font-size:12.5px} td:first-child,th:first-child{text-align:left}
+td.num{font-family:var(--mono)}
+.legend{display:flex;flex-direction:column;gap:9px;font-size:13px;color:var(--ink2)}
+.legend .row{display:flex;gap:9px;align-items:center}
+.sw{flex:none;width:34px;height:14px;border-radius:2px;border:1px solid var(--line)}
+.sw.grad{background:linear-gradient(90deg,var(--good),var(--fade))}
+.sw.reach{background:var(--reach)} .sw.out{background:var(--panel)}
+.sw.zone{background:transparent;border:2px solid var(--accent)} .sw.mk{background:var(--marker);border-color:var(--marker-edge)}
+.note{font-size:12.5px;color:var(--ink2);max-width:80ch}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Vùng vẽ của tay newarm trên bảng thẳng đứng</h1>
+    <p class="lede">Điều khiển tay theo hai cách: kéo bốn thanh góc khớp (đúng thứ gửi cho servo), hoặc rê chuột lên mặt bảng để tay tự tính góc đưa đầu bút tới điểm đó. Hai cách luôn đồng bộ với nhau.</p>
+  </header>
+
+  <section class="controls joints" aria-label="Góc khớp">
+    <p class="panel-h">Điều khiển tay bằng góc khớp <span>0° = tay treo thẳng xuống, cẳng tay thẳng hàng bắp tay. J4 chỉ xoay hộp bút, không dời đầu bút</span></p>
+    <div class="ctl"><label for="q1">J1 · base xoay ngang <output id="q1Out"></output></label>
+      <input type="range" id="q1" min="-90" max="90" step="0.5" value="0">
+      <span class="sub"><span id="q1Lim"></span><span id="q1Srv"></span></span></div>
+    <div class="ctl"><label for="q2">J2 · vai vung ra trước <output id="q2Out"></output></label>
+      <input type="range" id="q2" min="-90" max="90" step="0.5" value="0">
+      <span class="sub"><span id="q2Lim"></span><span id="q2Srv"></span></span></div>
+    <div class="ctl"><label for="q3">J3 · khuỷu gập <output id="q3Out"></output></label>
+      <input type="range" id="q3" min="-30" max="150" step="0.5" value="0">
+      <span class="sub"><span id="q3Lim"></span><span id="q3Srv"></span></span></div>
+    <div class="ctl"><label for="q4">J4 · xoay hộp bút quanh trục bút <output id="q4Out"></output></label>
+      <input type="range" id="q4" min="-90" max="90" step="0.5" value="0">
+      <span class="sub"><span id="q4Lim"></span><span id="q4Srv"></span></span></div>
+    <div class="btns">
+      <button type="button" class="act" id="home">Về home (cả 4 khớp 0°)</button>
+      <button type="button" class="act" id="touch">Đưa bút chạm tâm bảng</button>
+    </div>
+  </section>
+
+  <section class="controls" aria-label="Bố trí bảng và cách lắp">
+    <p class="panel-h">Bố trí bảng và cách lắp <span>các số đo được bằng thước trên robot thật</span></p>
+    <div class="ctl">
+      <span class="lab">Cách lắp servo khuỷu (dải góc q3)</span>
+      <div class="seg" id="elbowSeg">
+        <button type="button" id="e90" data-lo="-90" aria-pressed="false">±90°</button>
+        <button type="button" id="e60" data-lo="-60" aria-pressed="false">−60…120°</button>
+        <button type="button" id="e30" data-lo="-30" aria-pressed="true">−30…150°</button>
+      </div>
+    </div>
+    <div class="ctl"><label for="d">Mặt bảng cách trục xoay J1 <output id="dOut"></output></label>
+      <input type="range" id="d" min="10" max="38" step="0.5" value="22.5"></div>
+    <div class="ctl"><label for="zc">Tâm bảng thấp hơn trục J1 <output id="zcOut"></output></label>
+      <input type="range" id="zc" min="0" max="36" step="0.5" value="16.5"></div>
+    <div class="ctl"><label for="pen">Chiều dài bút (đáy hộp bút tới mũi) <output id="penOut"></output></label>
+      <input type="range" id="pen" min="40" max="90" step="0.5" value="62.5"></div>
+    <div class="ctl"><label for="tol">Drone lệch gần/xa cho phép <output id="tolOut"></output></label>
+      <input type="range" id="tol" min="0" max="5" step="0.5" value="2"></div>
+    <div class="btns">
+      <button type="button" class="act" id="best">Tìm vị trí bảng tốt nhất</button>
+      <button type="button" class="act" id="trace">Vẽ thử hình vuông 10 cm</button>
+    </div>
+  </section>
+
+  <section class="views">
+    <figure>
+      <figcaption><b>Nhìn thẳng vào bảng, đứng ở phía tay</b> · ngang u × cao z (cm). Rê chuột hoặc chạm để đặt đầu bút lên bảng</figcaption>
+      <canvas id="front" width="810" height="950" aria-label="Mặt bảng: vùng vẽ được, bảng in và điểm đầu bút"></canvas>
+    </figure>
+    <figure>
+      <figcaption><b>Nhìn ngang</b> · khoảng cách tới trục J1 × cao z (cm). Màu = đầu bút vẽ được nếu mặt bảng nằm ở khoảng cách đó</figcaption>
+      <canvas id="side" width="1160" height="950" aria-label="Mặt cắt dọc: cánh tay, mặt bảng và vùng vẽ theo khoảng cách"></canvas>
+    </figure>
+  </section>
+
+  <figure>
+    <div class="figrow">
+      <figcaption><b>Nhìn 3D</b> · kéo chuột hoặc vuốt để xoay góc nhìn. Cung tròn trên đỉnh cho thấy J1 đã xoay cả tay bao nhiêu so với hướng thẳng vào bảng</figcaption>
+      <div class="seg small" id="camSeg">
+        <button type="button" id="camIso" data-az="212" data-el="24" aria-pressed="true">Chéo</button>
+        <button type="button" id="camSide" data-az="270" data-el="0" aria-pressed="false">Ngang</button>
+        <button type="button" id="camTop" data-az="180" data-el="89" aria-pressed="false">Từ trên</button>
+        <button type="button" id="camBack" data-az="180" data-el="0" aria-pressed="false">Từ sau tay</button>
+      </div>
+    </div>
+    <canvas id="v3d" width="1600" height="860" aria-label="Hình 3D của cánh tay, bảng vẽ và góc xoay J1"></canvas>
+  </figure>
+
+  <section class="below">
+    <div class="read">
+      <div><span class="chip" id="chip"></span> <span id="where" style="font-family:var(--mono);font-size:13px;color:var(--ink2)"></span></div>
+      <p class="why" id="why"></p>
+      <table>
+        <thead><tr><th>Khớp</th><th>Góc khớp</th><th>Dải cho phép</th><th>Lệnh servo</th></tr></thead>
+        <tbody id="jt"></tbody>
+      </table>
+      <p class="note" style="margin:10px 0 0">Bút lệch pháp tuyến bảng: <span id="ang" style="font-family:var(--mono);color:var(--ink)"></span> · Bút nằm đúng trục J4 nên xoay J4 không dời đầu bút, chỉ đổi hướng hộp bút và marker dán trên đó.</p>
+    </div>
+    <div class="read">
+      <div class="legend">
+        <div class="row"><span class="sw grad"></span>Vẽ được chắc chắn. Đậm = bút vuông góc với bảng, nhạt dần tới 45°</div>
+        <div class="row"><span class="sw reach"></span>Với tới được nhưng không đạt điều kiện</div>
+        <div class="row"><span class="sw out"></span>Ngoài tầm với</div>
+        <div class="row"><span class="sw zone"></span>Vùng vẽ 10 × 10 cm của bảng in</div>
+        <div class="row"><span class="sw mk"></span>4 marker ArUco 3 cm, mép bảng 19 cm là nét đứt</div>
+        <div class="row"><span class="sw" style="background:transparent;border:2px solid var(--ink);border-bottom-color:var(--accent)"></span>Hộp bút nhìn dọc trục bút, xoay theo J4 (cạnh cam để dễ thấy chiều xoay)</div>
+      </div>
+      <p class="note" style="margin:12px 0 0">Một điểm “vẽ được chắc chắn” khi: nằm trong dải góc khớp, bút lệch pháp tuyến ≤ 45°, khuỷu gập ≥ 25° so với duỗi thẳng, khuỷu và cổ tay cách bảng ≥ 2 cm, và vẫn đúng khi nhấc bút 2 cm hoặc drone lệch gần/xa trong mức cho phép.</p>
+      <p class="note" style="margin:8px 0 0">Số liệu lấy từ thiết kế CAD (fk_newarm.py), chưa hiệu chỉnh trên robot thật.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+"use strict";
+// ── hình học tay (m) — khớp fk_newarm.py ──
+const J1W=[-0.01315,0.024973,0.418382], J2=[0.026245,0,-0.033247];
+const L1=[-0.054279,-0.009918,-0.14187], J4=[0.024015,-0.010011,-0.1655];
+const LIFT=0.02, BODY=0.02, MAXANG=45, MINBEND=25*Math.PI/180;
+const DRAW=0.10, MK=0.03, OFF=0.075, BOARD=0.19, UC=-0.015;
+const R2D=180/Math.PI, wrap=a=>{a=(a+Math.PI)%(2*Math.PI); if(a<0)a+=2*Math.PI; return a-Math.PI;};
+const $=id=>document.getElementById(id);
+const S={q3lo:-30,d:0.225,zc:J1W[2]-0.165,pen:0.0625,tol:0.02,u:UC,z:J1W[2]-0.165,mode:"ik",q:[0,0,0],q4:0};
+let anim=null;
+
+function tipInJ3(){return [J4[0],J4[1],J4[2]-0.002-S.pen];}
+// IK nhánh vẽ (đầu bút phía trước, khuỷu gập cùng phía). null nếu ngoài tầm
+function ik(u,y,z){
+  const l2=tipInJ3(), xlat=J2[0]+L1[0]+l2[0];
+  const dx=u-J1W[0], dy=y-J1W[1], dz=z-J1W[2];
+  const r2=dx*dx+dy*dy-xlat*xlat; if(r2<0) return null;
+  const y1=-Math.sqrt(r2);
+  const q1=-wrap(Math.atan2(dy,dx)-Math.atan2(y1,xlat));
+  const py=y1-J2[1], pz=dz-J2[2];
+  const a0=L1[1],a1=L1[2],b0=l2[1],b1=l2[2];
+  const la=Math.hypot(a0,a1), lb=Math.hypot(b0,b1);
+  const cg=(py*py+pz*pz-la*la-lb*lb)/(2*la*lb); if(Math.abs(cg)>1) return null;
+  const g=Math.acos(cg), base=Math.atan2(b1,b0)-Math.atan2(a1,a0);
+  const q3=wrap(g+base);
+  const c3=Math.cos(-q3), s3=Math.sin(-q3);
+  const vy=a0+c3*b0-s3*b1, vz=a1+s3*b0+c3*b1;
+  const q2=wrap(-(Math.atan2(pz,py)-Math.atan2(vz,vy)));
+  return {q:[q1,q2,q3],bend:Math.abs(wrap(q3-base))};
+}
+const rx=(v,a)=>{const c=Math.cos(a),s=Math.sin(a);return [v[0],c*v[1]-s*v[2],s*v[1]+c*v[2]];};
+function chain(q){ // các điểm trong hệ J1 (đã bỏ xoay J1)
+  const p2=J2, a=rx(L1,-q[1]), p3=[p2[0]+a[0],p2[1]+a[1],p2[2]+a[2]];
+  const b=rx(J4,-q[1]-q[2]), p4=[p3[0]+b[0],p3[1]+b[1],p3[2]+b[2]];
+  const t=rx(tipInJ3(),-q[1]-q[2]), pt=[p3[0]+t[0],p3[1]+t[1],p3[2]+t[2]];
+  return [[0,0,0],p2,p3,p4,pt];
+}
+const lim=()=>({lo:[-90,-90,S.q3lo],hi:[90,90,S.q3lo+180]});
+function fkTip(q){const P=chain(q)[4], c=Math.cos(-q[0]), s=Math.sin(-q[0]);
+  return [J1W[0]+c*P[0]-s*P[1], J1W[1]+s*P[0]+c*P[1], J1W[2]+P[2]];}
+// trạng thái hiện tại: mode "ik" = đầu bút đặt trên bảng, "fk" = theo 3 thanh góc khớp
+function pose(){
+  if(S.mode==="ik"){const r=robust(S.u,S.z,S.d); if(r.q) S.q=r.q.slice(); return r;}
+  const t=fkTip(S.q); S.u=t[0]; S.z=t[2];
+  const gap=S.d-(J1W[1]-t[1]);
+  if(Math.abs(gap)<=0.003) return robust(S.u,S.z,S.d).q?Object.assign(robust(S.u,S.z,S.d),{q:S.q}):{why:"out",q:S.q};
+  const ang=Math.acos(Math.max(-1,Math.min(1,Math.cos(S.q[0])*Math.sin(S.q[1]+S.q[2]))))*R2D;
+  return {free:true,gap,q:S.q,angNow:ang};
+}
+// kiểm 1 điểm ở 1 độ sâu: trả {ang} hoặc {why}
+function check(u,z,d){
+  const yp=J1W[1]-d, s=ik(u,yp,z);
+  if(!s) return {why:"out"};
+  const L=lim();
+  for(let i=0;i<3;i++){const v=s.q[i]*R2D; if(v<L.lo[i]-1e-6||v>L.hi[i]+1e-6) return {why:"limit",j:i,q:s.q};}
+  if(s.bend<MINBEND) return {why:"bend",q:s.q};
+  const P=chain(s.q), s1=Math.sin(-s.q[0]), c1=Math.cos(-s.q[0]);
+  const wy=p=>J1W[1]+s1*p[0]+c1*p[1];
+  if(Math.min(wy(P[2]),wy(P[3]))-yp<BODY) return {why:"body",q:s.q};
+  const ang=Math.acos(Math.max(-1,Math.min(1,Math.cos(s.q[0])*Math.sin(s.q[1]+s.q[2]))))*R2D;
+  if(ang>MAXANG) return {why:"angle",q:s.q,ang};
+  return {ang,q:s.q};
+}
+function robust(u,z,d){
+  const n=check(u,z,d); if(n.why) return n;
+  let worst=n.ang;
+  for(const dd of [d-LIFT-S.tol,d-LIFT,d+S.tol]){const r=check(u,z,dd); if(r.why) return {why:"depth",q:n.q,ang:n.ang}; worst=Math.max(worst,r.ang);}
+  return {ang:worst,q:n.q,angNow:n.ang};
+}
+
+// ── lưới ──
+const STEP=0.005, FU=[-0.20,0.20], FZ=[0,0.47], SX=[-0.16,0.42];
+const nU=Math.round((FU[1]-FU[0])/STEP), nZ=Math.round((FZ[1]-FZ[0])/STEP), nD=Math.round((0.40-0.08)/STEP);
+let gridF=null, gridS=null;
+function compute(){
+  gridF=new Float32Array(nU*nZ); gridS=new Float32Array(nD*nZ);
+  for(let i=0;i<nZ;i++){const z=FZ[0]+(i+0.5)*STEP;
+    for(let j=0;j<nU;j++){const r=robust(FU[0]+(j+0.5)*STEP,z,S.d); gridF[i*nU+j]=r.why?(r.why==="out"?-2:-1):r.ang;}
+    for(let j=0;j<nD;j++){const r=robust(UC,z,0.08+(j+0.5)*STEP); gridS[i*nD+j]=r.why?(r.why==="out"?-2:-1):r.ang;}
+  }
+}
+
+// ── vẽ ──
+let C={};
+function readColors(){const cs=getComputedStyle(document.documentElement);
+  for(const k of ["panel","ink","ink2","line","good","fade","reach","accent","marker","marker-edge","bg"]) C[k]=cs.getPropertyValue("--"+k).trim();
+  C.g=hex(C.good); C.f=hex(C.fade);}
+const hex=h=>{h=h.replace("#","");return [0,2,4].map(i=>parseInt(h.substr(i,2),16));};
+const mix=t=>{const a=C.g,b=C.f;return `rgb(${Math.round(a[0]+(b[0]-a[0])*t)},${Math.round(a[1]+(b[1]-a[1])*t)},${Math.round(a[2]+(b[2]-a[2])*t)})`;};
+function view(cv,xr,zr,padL,padB,flip){
+  const W=cv.width,H=cv.height, pw=W-padL-14, ph=H-padB-14;
+  const sx=pw/(xr[1]-xr[0]), sz=ph/(zr[1]-zr[0]);
+  return {W,H,padL,padB,flip,X:x=>flip?padL+(xr[1]-x)*sx:padL+(x-xr[0])*sx,Z:z=>14+ph-(z-zr[0])*sz,sx,sz,
+          invX:px=>flip?xr[1]-(px-padL)/sx:xr[0]+(px-padL)/sx, invZ:pz=>zr[0]+(14+ph-pz)/sz, xr,zr,
+          x0:(a,w)=>flip?padL+(xr[1]-a-w)*sx:padL+(a-xr[0])*sx};
+}
+function axes(g,v,xl){
+  g.font="22px "+getComputedStyle(document.body).fontFamily; g.fillStyle=C.ink2; g.strokeStyle=C.line; g.lineWidth=1;
+  g.textAlign="center"; g.textBaseline="top";
+  for(let x=Math.ceil(v.xr[0]*10)/10;x<=v.xr[1]+1e-9;x+=0.1){const px=v.X(x); g.beginPath();g.moveTo(px,v.Z(v.zr[1]));g.lineTo(px,v.Z(v.zr[0]));g.stroke(); g.fillText(Math.round(x*100),px,v.Z(v.zr[0])+8);}
+  g.textAlign="right"; g.textBaseline="middle";
+  for(let z=0;z<=v.zr[1]+1e-9;z+=0.1){const pz=v.Z(z); g.beginPath();g.moveTo(v.padL,pz);g.lineTo(v.W-14,pz);g.stroke(); g.fillText(Math.round(z*100),v.padL-10,pz);}
+  g.textAlign="center"; g.textBaseline="bottom"; g.fillText(xl,v.X((v.xr[0]+v.xr[1])/2),v.H-4);
+}
+function heat(g,v,grid,n,x0){
+  for(let i=0;i<nZ;i++) for(let j=0;j<n;j++){const a=grid[i*n+j]; if(a<-1.5) continue;
+    g.fillStyle=a<0?C.reach:mix(a/MAXANG);
+    const px=v.x0(x0+j*STEP,STEP), pz=v.Z(FZ[0]+(i+1)*STEP);
+    g.fillRect(px,pz,Math.ceil(v.sx*STEP)+0.6,Math.ceil(v.sz*STEP)+0.6);}
+}
+function label(g,t,x,y,al){g.font="500 22px "+getComputedStyle(document.body).fontFamily; g.textAlign=al||"left"; g.textBaseline="middle";
+  const w=g.measureText(t).width, x0=al==="right"?x-w:al==="center"?x-w/2:x;
+  g.globalAlpha=0.82; g.fillStyle=C.panel; g.fillRect(x0-5,y-15,w+10,30); g.globalAlpha=1; g.fillStyle=C.ink; g.fillText(t,x,y);}
+let vF,vS;
+function draw(){
+  const cur=pose();
+  // ── nhìn thẳng ──
+  const cf=$("front"), g=cf.getContext("2d"); vF=view(cf,FU,FZ,58,58,true);
+  g.fillStyle=C.panel; g.fillRect(0,0,cf.width,cf.height);
+  heat(g,vF,gridF,nU,FU[0]); axes(g,vF,"u = trục X base_link (cm)");
+  const bx=UC, bz=S.zc;
+  g.setLineDash([10,8]); g.strokeStyle=C.ink2; g.lineWidth=2; g.strokeRect(vF.x0(bx-BOARD/2,BOARD),vF.Z(bz+BOARD/2),BOARD*vF.sx,BOARD*vF.sz); g.setLineDash([]);
+  for(const sx of [-1,1]) for(const sz of [-1,1]){const x=vF.x0(bx+sx*OFF-MK/2,MK), z=vF.Z(bz+sz*OFF+MK/2);
+    g.fillStyle=C.marker; g.fillRect(x,z,MK*vF.sx,MK*vF.sz); g.strokeStyle=C["marker-edge"]; g.lineWidth=2; g.strokeRect(x,z,MK*vF.sx,MK*vF.sz);}
+  g.strokeStyle=C.accent; g.lineWidth=4; g.strokeRect(vF.x0(bx-DRAW/2,DRAW),vF.Z(bz+DRAW/2),DRAW*vF.sx,DRAW*vF.sz);
+  // trục J1
+  const jx=vF.X(J1W[0]), jz=vF.Z(J1W[2]); g.fillStyle=C.ink; g.beginPath(); g.moveTo(jx-11,jz-9); g.lineTo(jx+11,jz-9); g.lineTo(jx,jz+10); g.closePath(); g.fill();
+  label(g,"trục J1",jx+18,jz-2);
+  // đầu bút + hộp bút (25 x 30.7 mm, nhìn dọc trục bút từ phía tay), xoay theo J4
+  const tx=vF.X(S.u), tz=vF.Z(S.z);
+  g.save(); g.translate(tx,tz); g.rotate(S.q4);
+  const bw=0.025*vF.sx, y0=-0.0124*vF.sz, y1=0.0183*vF.sz;
+  g.globalAlpha=0.55; g.fillStyle=C.panel; g.fillRect(-bw/2,y0,bw,y1-y0); g.globalAlpha=1;
+  g.strokeStyle=C.ink; g.lineWidth=3; g.strokeRect(-bw/2,y0,bw,y1-y0);
+  g.strokeStyle=C.accent; g.lineWidth=5; g.beginPath(); g.moveTo(-bw/2,y1); g.lineTo(bw/2,y1); g.stroke();
+  g.restore(); g.strokeStyle=C.panel; g.lineWidth=7; g.beginPath(); g.arc(tx,tz,11,0,7); g.stroke();
+  if(cur.free) g.setLineDash([5,5]);
+  g.strokeStyle=(cur.why||cur.free)?C.ink2:C.ink; g.lineWidth=3.5; g.beginPath(); g.arc(tx,tz,11,0,7); g.moveTo(tx-20,tz); g.lineTo(tx+20,tz); g.moveTo(tx,tz-20); g.lineTo(tx,tz+20); g.stroke(); g.setLineDash([]);
+
+  // ── nhìn ngang ──
+  const cs=$("side"), h=cs.getContext("2d"); vS=view(cs,SX,FZ,58,58,false);
+  h.fillStyle=C.panel; h.fillRect(0,0,cs.width,cs.height);
+  heat(h,vS,gridS,nD,0.08); axes(h,vS,"khoảng cách ngang từ trục J1 (cm)");
+  h.setLineDash([3,8]); h.strokeStyle=C.ink2; h.lineWidth=2; h.beginPath(); h.moveTo(vS.X(0),vS.Z(0)); h.lineTo(vS.X(0),vS.Z(FZ[1])); h.stroke(); h.setLineDash([]);
+  label(h,"trục J1",vS.X(0)+10,vS.Z(0.02));
+  const X=vS.X(S.d);
+  h.setLineDash([10,8]); h.strokeStyle=C.ink2; h.lineWidth=2.5; h.beginPath(); h.moveTo(X,vS.Z(bz-BOARD/2)); h.lineTo(X,vS.Z(bz+BOARD/2)); h.stroke(); h.setLineDash([]);
+  h.strokeStyle=C.accent; h.lineWidth=7; h.beginPath(); h.moveTo(X,vS.Z(bz-DRAW/2)); h.lineTo(X,vS.Z(bz+DRAW/2)); h.stroke();
+  label(h,"mặt bảng",X+12,vS.Z(bz-BOARD/2)+4);
+  const q=cur.q;
+  if(q){const P=chain(q).map(p=>[vS.X(-p[1]),vS.Z(J1W[2]+p[2])]);
+    h.lineJoin="round"; h.lineCap="round";
+    h.strokeStyle=C.panel; h.lineWidth=13; h.beginPath(); P.forEach((p,i)=>i?h.lineTo(p[0],p[1]):h.moveTo(p[0],p[1])); h.stroke();
+    h.strokeStyle=C.ink; h.lineWidth=6; h.beginPath(); P.forEach((p,i)=>i?h.lineTo(p[0],p[1]):h.moveTo(p[0],p[1])); h.stroke();
+    P.slice(0,4).forEach(p=>{h.fillStyle=C.ink; h.strokeStyle=C.panel; h.lineWidth=4; h.beginPath(); h.arc(p[0],p[1],11,0,7); h.fill(); h.stroke();});
+    h.fillStyle=C.accent; h.beginPath(); h.arc(P[4][0],P[4][1],8,0,7); h.fill();
+    label(h,"vai",P[1][0]+18,P[1][1]-4); label(h,"khuỷu",P[2][0],P[2][1]+32,"center"); label(h,"đầu bút",P[4][0]-14,P[4][1]-26,"right");
+    if(cur.free) label(h,(cur.gap>0?"còn cách bảng ":"lấn qua mặt bảng ")+Math.abs(cur.gap*100).toFixed(1)+" cm",P[4][0]+16,P[4][1]+30);
+  }
+  draw3d(cur); readout(cur); jointUI();
+}
+// ── 3D (chiếu trực giao, xoay quanh trục đứng) ──
+const CAM={az:212,el:24};
+function draw3d(cur){
+  const cv=$("v3d"), g=cv.getContext("2d"), W=cv.width, H=cv.height;
+  g.fillStyle=C.panel; g.fillRect(0,0,W,H);
+  const az=CAM.az/R2D, el=CAM.el/R2D;
+  const r=[Math.cos(az),Math.sin(az),0], f=[-Math.sin(az)*Math.cos(el),Math.cos(az)*Math.cos(el),-Math.sin(el)];
+  const up=[r[1]*f[2]-r[2]*f[1], r[2]*f[0]-r[0]*f[2], r[0]*f[1]-r[1]*f[0]];
+  const FL=0.07, ctr=[J1W[0],J1W[1]-0.12,0.275], sc=Math.min(W/0.8,H/0.47);
+  const P=p=>{const v=[p[0]-ctr[0],p[1]-ctr[1],p[2]-ctr[2]];
+    return [W/2+(v[0]*r[0]+v[1]*r[1])*sc, H/2-(v[0]*up[0]+v[1]*up[1]+v[2]*up[2])*sc, v[0]*f[0]+v[1]*f[1]+v[2]*f[2]];};
+  const line=(a,b)=>{const A=P(a),B=P(b); g.beginPath(); g.moveTo(A[0],A[1]); g.lineTo(B[0],B[1]); g.stroke();};
+  const poly=(pts,fill,stroke)=>{g.beginPath(); pts.forEach((p,i)=>{const q=P(p); i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1]);}); g.closePath(); if(fill){g.fillStyle=fill; g.fill();} if(stroke){g.strokeStyle=stroke; g.stroke();}};
+  const q=cur.q||S.q, c1=Math.cos(-q[0]), s1=Math.sin(-q[0]);
+  const Wp=p=>[J1W[0]+c1*p[0]-s1*p[1], J1W[1]+s1*p[0]+c1*p[1], J1W[2]+p[2]];
+  const arm=chain(q).map(Wp), yp=J1W[1]-S.d, bz=S.zc;
+  // sàn z=0
+  g.lineWidth=1.5; g.strokeStyle=C.line;
+  for(let x=-0.2;x<=0.2001;x+=0.1) line([x,-0.42,FL],[x,0.12,FL]);
+  for(let y=-0.42;y<=0.1201;y+=0.09) line([-0.2,y,FL],[0.2,y,FL]);
+  // bóng tay + chân bảng trên sàn
+  g.strokeStyle=C.reach; g.lineWidth=9; g.lineCap="round"; g.lineJoin="round";
+  g.beginPath(); arm.forEach((p,i)=>{const a=P([p[0],p[1],FL]); i?g.lineTo(a[0],a[1]):g.moveTo(a[0],a[1]);}); g.stroke();
+  g.lineWidth=4; line([UC-BOARD/2,yp,FL],[UC+BOARD/2,yp,FL]);
+  // trục J1
+  g.setLineDash([4,9]); g.strokeStyle=C.ink2; g.lineWidth=2; line([J1W[0],J1W[1],FL],[J1W[0],J1W[1],J1W[2]+0.05]); g.setLineDash([]);
+  const board=()=>{
+    const b=BOARD/2, d=DRAW/2;
+    g.setLineDash([10,8]); g.lineWidth=2;
+    g.globalAlpha=0.8; poly([[UC-b,yp,bz-b],[UC+b,yp,bz-b],[UC+b,yp,bz+b],[UC-b,yp,bz+b]],C.bg,C.ink2); g.globalAlpha=1; g.setLineDash([]);
+    for(const sx of [-1,1]) for(const sz of [-1,1]){const x=UC+sx*OFF, z=bz+sz*OFF, m=MK/2; g.lineWidth=1.5;
+      poly([[x-m,yp,z-m],[x+m,yp,z-m],[x+m,yp,z+m],[x-m,yp,z+m]],C.marker,C["marker-edge"]);}
+    g.lineWidth=4; poly([[UC-d,yp,bz-d],[UC+d,yp,bz-d],[UC+d,yp,bz+d],[UC-d,yp,bz+d]],null,C.accent);
+  };
+  const armDraw=()=>{
+    // đế + servo J1
+    const z0=J1W[2]+0.03, bx=0.04, by=0.035; g.lineWidth=2;
+    poly([[J1W[0]-bx,J1W[1]-by,z0],[J1W[0]+bx,J1W[1]-by,z0],[J1W[0]+bx,J1W[1]+by,z0],[J1W[0]-bx,J1W[1]+by,z0]],C.reach,C.ink2);
+    g.strokeStyle=C.ink; g.lineWidth=10; line([J1W[0],J1W[1],z0],arm[0]);
+    // cung J1: hướng 0° (thẳng vào bảng) -> hướng hiện tại, trên mặt phẳng ngang ở đỉnh tay
+    const R=0.085, zt=J1W[2], dir=a=>[J1W[0]-Math.sin(a)*R, J1W[1]-Math.cos(a)*R, zt];
+    g.lineWidth=2; g.setLineDash([6,6]); g.strokeStyle=C.ink2; line([J1W[0],J1W[1],zt],dir(0)); g.setLineDash([]);
+    g.strokeStyle=C.accent; g.lineWidth=3; line([J1W[0],J1W[1],zt],dir(q[0]));
+    g.beginPath(); const n=Math.max(2,Math.ceil(Math.abs(q[0])*R2D/4));
+    for(let i=0;i<=n;i++){const a=P(dir(q[0]*i/n)); i?g.lineTo(a[0],a[1]):g.moveTo(a[0],a[1]);} g.stroke();
+    const lp=P(dir(q[0]/2)); label(g,"J1 "+(q[0]*R2D).toFixed(0)+"°",lp[0]+14,lp[1]-18);
+    // các khâu
+    g.strokeStyle=C.panel; g.lineWidth=14; g.beginPath(); arm.forEach((p,i)=>{const a=P(p); i?g.lineTo(a[0],a[1]):g.moveTo(a[0],a[1]);}); g.stroke();
+    g.strokeStyle=C.ink; g.lineWidth=7; g.beginPath(); arm.forEach((p,i)=>{const a=P(p); i?g.lineTo(a[0],a[1]):g.moveTo(a[0],a[1]);}); g.stroke();
+    arm.slice(0,4).forEach(p=>{const a=P(p); g.fillStyle=C.ink; g.strokeStyle=C.panel; g.lineWidth=3.5; g.beginPath(); g.arc(a[0],a[1],10,0,7); g.fill(); g.stroke();});
+    // hộp bút (xoay theo J4)
+    const t=-(q[1]+q[2]), ct=Math.cos(t), st=Math.sin(t), c4=Math.cos(-S.q4), s4=Math.sin(-S.q4);
+    const B=p=>{const x=c4*p[0]-s4*p[1], y=s4*p[0]+c4*p[1], z=p[2]; const v=[x,ct*y-st*z,st*y+ct*z];
+      return [arm[3][0]+c1*v[0]-s1*v[1], arm[3][1]+s1*v[0]+c1*v[1], arm[3][2]+v[2]];};
+    const xs=[-0.0125,0.0125], ys=[-0.0124,0.0183], zs=[-0.002,-0.022]; g.lineWidth=2.5; g.strokeStyle=C.ink;
+    for(const z of zs) poly([[xs[0],ys[0],z],[xs[1],ys[0],z],[xs[1],ys[1],z],[xs[0],ys[1],z]].map(B),null,C.ink);
+    for(const x of xs) for(const y of ys) line(B([x,y,zs[0]]),B([x,y,zs[1]]));
+    g.strokeStyle=C.accent; g.lineWidth=5; line(B([xs[0],ys[1],zs[1]]),B([xs[1],ys[1],zs[1]]));
+    const tp=P(arm[4]); g.fillStyle=C.accent; g.beginPath(); g.arc(tp[0],tp[1],8,0,7); g.fill();
+  };
+  const mid=[(arm[2][0]+arm[4][0])/2,(arm[2][1]+arm[4][1])/2,(arm[2][2]+arm[4][2])/2];
+  if(P([UC,yp,bz])[2]>=P(mid)[2]){board(); armDraw();} else {armDraw(); board();}
+  const lb=P([UC,yp,bz+BOARD/2]); label(g,"bảng",lb[0],lb[1]-20,"center");
+}
+const WHY={out:"Ngoài tầm với: tay không đủ dài để đưa đầu bút tới điểm này.",
+  limit:j=>`Vượt dải góc của khớp ${["base (J1)","vai (J2)","khuỷu (J3)"][j]}. Với khuỷu, đổi cách lắp sừng servo sẽ dời dải này.`,
+  bend:"Quá sát mép tầm với: tay gần duỗi thẳng, khớp phải quay rất nhanh mới dời được bút nên bám kém.",
+  body:"Khuỷu hoặc cổ tay cách mặt bảng dưới 2 cm: tay sẽ chạm bảng trước đầu bút.",
+  angle:"Bút nghiêng quá 45° so với pháp tuyến bảng: bút lò xo dễ trượt, nét vẽ xấu.",
+  depth:"Vẽ được ở đúng khoảng cách này, nhưng hỏng khi nhấc bút 2 cm hoặc khi drone lệch gần/xa trong mức cho phép."};
+function readout(r){
+  const chip=$("chip"); const ok=!r.why;
+  if(r.free){
+    chip.className="chip mid"; chip.textContent=r.gap>0?"Bút chưa chạm bảng":"Đầu bút lấn qua mặt bảng";
+    $("where").textContent=`u ${(S.u*100).toFixed(1)} cm · z ${(S.z*100).toFixed(1)} cm · ${((J1W[2]-S.z)*100).toFixed(1)} cm dưới trục J1`;
+    $("why").textContent=r.gap>0?`Đầu bút còn cách mặt bảng ${(r.gap*100).toFixed(1)} cm. Tăng góc vai hoặc góc khuỷu, hoặc bấm “Đưa bút chạm tâm bảng”.`
+      :`Với các góc này đầu bút đã vượt qua mặt bảng ${(-r.gap*100).toFixed(1)} cm, trên robot thật bút sẽ bị ép vào bảng. Giảm góc vai hoặc khuỷu.`;
+    tableRows(r); return;
+  }
+  chip.className="chip "+(ok?"ok":"bad"); chip.textContent=ok?"Vẽ được chắc chắn":"Không đạt";
+  $("where").textContent=`u ${(S.u*100).toFixed(1)} cm · z ${(S.z*100).toFixed(1)} cm · ${((J1W[2]-S.z)*100).toFixed(1)} cm dưới trục J1`;
+  $("why").textContent=ok?"Điểm này thoả mọi điều kiện, kể cả khi nhấc bút và khi drone lệch gần/xa.":(typeof WHY[r.why]==="function"?WHY[r.why](r.j):WHY[r.why]);
+  tableRows(r);
+}
+function tableRows(r){
+  const L=lim(), names=["base (J1)","vai (J2)","khuỷu (J3)"], home=[90,90,-S.q3lo];
+  const q4d=S.q4*R2D;
+  let rows="";
+  for(let i=0;i<3;i++){const v=r.q?r.q[i]*R2D:null, bad=v!==null&&(v<L.lo[i]-1e-6||v>L.hi[i]+1e-6);
+    rows+=`<tr><td>${names[i]}</td><td class="num" style="${bad?"color:var(--bad)":""}">${v===null?"–":v.toFixed(1)+"°"}</td><td class="num">${L.lo[i]}…${L.hi[i]}°</td><td class="num">${v===null||bad?"–":(home[i]+v).toFixed(1)+"°"}</td></tr>`;}
+  rows+=`<tr><td>xoay bút (J4)</td><td class="num">${q4d.toFixed(1)}°</td><td class="num">-90…90°</td><td class="num">${(90+q4d).toFixed(1)}°</td></tr>`;
+  $("jt").innerHTML=rows;
+  const a=r.angNow??r.ang; $("ang").textContent=a===undefined?"–":a.toFixed(1)+"°";
+}
+
+function jointUI(){
+  const L=lim(), home=[90,90,-S.q3lo];
+  for(let i=0;i<3;i++){const el=$("q"+(i+1)), v=S.q[i]*R2D;
+    el.min=L.lo[i]; el.max=L.hi[i];
+    if(document.activeElement!==el||S.mode==="ik") el.value=Math.max(L.lo[i],Math.min(L.hi[i],v));
+    const out=v<L.lo[i]-1e-6||v>L.hi[i]+1e-6;
+    $("q"+(i+1)+"Out").textContent=v.toFixed(1)+"°"+(out?" (ngoài dải)":"");
+    $("q"+(i+1)+"Lim").textContent=`dải ${L.lo[i]}…${L.hi[i]}°`;
+    $("q"+(i+1)+"Srv").textContent=out?"servo –":`lệnh servo ${(home[i]+v).toFixed(1)}°`;}
+  const v4=S.q4*R2D; $("q4Out").textContent=v4.toFixed(1)+"°"; $("q4Lim").textContent="dải -90…90°"; $("q4Srv").textContent=`lệnh servo ${(90+v4).toFixed(1)}°`;
+  if(document.activeElement!==$("q4")) $("q4").value=v4;
+}
+// ── tương tác ──
+function sync(){
+  $("dOut").textContent=(S.d*100).toFixed(1)+" cm"; $("zcOut").textContent=((J1W[2]-S.zc)*100).toFixed(1)+" cm";
+  $("penOut").textContent=(S.pen*1000).toFixed(1)+" mm"; $("tolOut").textContent="±"+(S.tol*100).toFixed(1)+" cm";
+  $("d").value=S.d*100; $("zc").value=(J1W[2]-S.zc)*100;
+  document.querySelectorAll("#elbowSeg button").forEach(b=>b.setAttribute("aria-pressed",String(+b.dataset.lo===S.q3lo)));
+}
+function refresh(full){ if(full) compute(); sync(); draw(); }
+function stop(){ if(anim){cancelAnimationFrame(anim); anim=null; $("trace").textContent="Vẽ thử hình vuông 10 cm";} }
+$("d").addEventListener("input",e=>{S.d=+e.target.value/100; refresh(true);});
+$("zc").addEventListener("input",e=>{const o=S.zc; S.zc=J1W[2]-+e.target.value/100; if(S.mode==="ik") S.z+=S.zc-o; refresh(false);});
+$("pen").addEventListener("input",e=>{S.pen=+e.target.value/1000; refresh(true);});
+$("tol").addEventListener("input",e=>{S.tol=+e.target.value/100; refresh(true);});
+document.querySelectorAll("#elbowSeg button").forEach(b=>b.addEventListener("click",()=>{S.q3lo=+b.dataset.lo;
+  S.q[2]=Math.max(S.q3lo/R2D,Math.min((S.q3lo+180)/R2D,S.q[2])); refresh(true);}));
+[0,1,2].forEach(i=>$("q"+(i+1)).addEventListener("input",e=>{stop(); S.mode="fk"; S.q[i]=+e.target.value/R2D; draw();}));
+const c3=$("v3d"); let drag=null;
+function camButtons(){document.querySelectorAll("#camSeg button").forEach(b=>b.setAttribute("aria-pressed",String(+b.dataset.az===CAM.az&&+b.dataset.el===CAM.el)));}
+c3.addEventListener("pointerdown",e=>{c3.setPointerCapture(e.pointerId); drag=[e.clientX,e.clientY,CAM.az,CAM.el];});
+c3.addEventListener("pointermove",e=>{ if(!drag||!e.buttons&&e.pointerType==="mouse") {drag=e.buttons?drag:null; return;}
+  CAM.az=((drag[2]-(e.clientX-drag[0])*0.45)%360+360)%360; CAM.el=Math.max(-10,Math.min(89,drag[3]+(e.clientY-drag[1])*0.35)); camButtons(); draw();});
+c3.addEventListener("pointerup",()=>{drag=null;}); c3.addEventListener("pointercancel",()=>{drag=null;});
+document.querySelectorAll("#camSeg button").forEach(b=>b.addEventListener("click",()=>{CAM.az=+b.dataset.az; CAM.el=+b.dataset.el; camButtons(); draw();}));
+$("q4").addEventListener("input",e=>{S.q4=+e.target.value/R2D; draw();});
+$("home").addEventListener("click",()=>{stop(); S.mode="fk"; S.q=[0,0,0]; S.q4=0; draw();});
+$("touch").addEventListener("click",()=>{stop(); S.mode="ik"; S.u=UC; S.z=S.zc; draw();});
+const cf=$("front");
+function point(e){const r=cf.getBoundingClientRect(), k=cf.width/r.width;
+  S.mode="ik"; S.u=Math.max(FU[0],Math.min(FU[1],vF.invX((e.clientX-r.left)*k))); S.z=Math.max(FZ[0],Math.min(FZ[1],vF.invZ((e.clientY-r.top)*k))); draw();}
+cf.addEventListener("pointermove",e=>{ if(e.pointerType==="mouse"||e.buttons) {stop(); point(e);} });
+cf.addEventListener("pointerdown",e=>{stop(); cf.setPointerCapture(e.pointerId); point(e);});
+$("trace").addEventListener("click",()=>{
+  if(anim){stop(); return;}
+  S.mode="ik"; $("trace").textContent="Dừng"; const t0=performance.now(), T=9000, h=DRAW/2;
+  const c=[[-h,-h],[h,-h],[h,h],[-h,h],[-h,-h]];
+  const tick=t=>{const p=((t-t0)%T)/T*4, k=Math.floor(p), f=p-k;
+    S.u=UC+c[k][0]+(c[k+1][0]-c[k][0])*f; S.z=S.zc+c[k][1]+(c[k+1][1]-c[k][1])*f; draw(); anim=requestAnimationFrame(tick);};
+  anim=requestAnimationFrame(tick);
+});
+$("best").addEventListener("click",()=>{
+  stop(); let best=null; const h=DRAW/2;
+  for(let d=0.12;d<=0.36+1e-9;d+=0.0125) for(let zc=0.08;zc<=0.42+1e-9;zc+=0.01){
+    let worst=0, ok=true;
+    for(let a=-h;a<=h+1e-9&&ok;a+=0.025) for(let b=-h;b<=h+1e-9;b+=0.025){const r=robust(UC+a,zc+b,d); if(r.why){ok=false;break;} worst=Math.max(worst,r.ang);}
+    if(ok&&(!best||worst<best.w)) best={w:worst,d,zc};
+  }
+  if(best){S.mode="ik"; S.d=best.d; S.zc=best.zc; S.u=UC; S.z=best.zc; refresh(true);}
+  else {$("why").textContent="Với cách lắp và mức lệch hiện tại, không có vị trí bảng nào chứa trọn hình vuông 10 cm."; $("chip").className="chip bad"; $("chip").textContent="Không tìm được";}
+});
+function theme(){readColors(); draw();}
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",theme);
+new MutationObserver(theme).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+readColors(); refresh(true);
+if(document.fonts&&document.fonts.ready) document.fonts.ready.then(draw);
+})();
+</script>

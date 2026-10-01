@@ -1,0 +1,347 @@
+<?xml version="1.0" ?>
+<!-- SINH TỰ ĐỘNG bởi scripts/rl/newarm_make_sim.py — đừng sửa tay. -->
+<robot name="newarm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<xacro:arg name="elbow_lower" default="-0.523599"/>
+<xacro:arg name="elbow_upper" default="2.617994"/>
+<xacro:include filename="$(find visual_servoing)/urdf/newarm/materials.xacro" />
+<xacro:include filename="$(find visual_servoing)/urdf/newarm/newarm.ros2_control.xacro" />
+<xacro:include filename="$(find visual_servoing)/urdf/newarm/newarm.gazebo.xacro" />
+
+<!-- base_link cố định vào world: trục J1 trùng trục Z world, tay hướng về +X -->
+<link name="world"/>
+<joint name="world_fixed" type="fixed">
+  <origin xyz="0.024973 0.01315 0.1" rpy="0 0 1.570796"/>
+  <parent link="world"/>
+  <child link="base_link"/>
+</joint>
+
+<link name="base_link">
+  <inertial>
+    <origin xyz="-0.013099 0.035685 0.430136" rpy="0 0 0"/>
+    <mass value="0.417679"/>
+    <inertia ixx="0.000178" iyy="0.000285" izz="0.000442" ixy="-0" iyz="0" ixz="-0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/base_link.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="DigitalServo8120_1">
+  <inertial>
+    <origin xyz="-0.0039 0.023711 0.010048" rpy="0 0 0"/>
+    <mass value="0.252337"/>
+    <inertia ixx="6.8e-05" iyy="4.1e-05" izz="4.3e-05" ixy="0" iyz="-1e-06" ixz="0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.009205 -0.011786 -0.433355" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/DigitalServo8120_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="rds3120_1">
+  <inertial>
+    <origin xyz="-0.000427 0.000041 -0.022017" rpy="0 0 0"/>
+    <mass value="0.0385774"/>
+    <inertia ixx="7e-06" iyy="1.3e-05" izz="8e-06" ixy="-0" iyz="0" ixz="-0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.01315 -0.024973 -0.418382" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/rds3120_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="rds3120_support_1">
+  <inertial>
+    <origin xyz="-0.0258 0.017355 0" rpy="1.570796 0 0"/>
+    <mass value="0.0114569"/>
+    <inertia ixx="2e-06" iyy="7e-06" izz="6e-06" ixy="0" iyz="-0" ixz="0"/>
+  </inertial>
+  <visual>
+    <origin xyz="-0.013095 0.385135 -0.024973" rpy="1.570796 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/rds3120_support_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="link1_1">
+  <inertial>
+    <origin xyz="-0.014829 0.071625 0.026919" rpy="1.570796 0 0"/>
+    <mass value="0.458776"/>
+    <inertia ixx="0.000573" iyy="0.000566" izz="7.5e-05" ixy="0" iyz="0" ixz="-0"/>
+  </inertial>
+  <visual>
+    <origin xyz="-0.002145 0.380185 0.002027" rpy="1.570796 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/link1_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="Servo_mg996_BracketM_1">
+  <inertial>
+    <origin xyz="0.017684 0.410153 0.102027" rpy="1.570796 0 0"/>
+    <mass value="0.001"/>
+    <inertia ixx="1e-08" iyy="1e-08" izz="1e-08" ixy="0" iyz="0" ixz="0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.017684 0.410153 0.102027" rpy="1.570796 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/Servo_mg996_BracketM_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="MG996R_servo_1">
+  <inertial>
+    <origin xyz="0.008485 0.11762 0.146787" rpy="1.570796 0 0"/>
+    <mass value="0.240069"/>
+    <inertia ixx="4e-05" iyy="3.6e-05" izz="6.1e-05" ixy="-1e-06" iyz="0" ixz="0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.025684 0.360903 0.121897" rpy="1.570796 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/MG996R_servo_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="banhrang_mg996_1">
+  <inertial>
+    <origin xyz="-0.000674 0.151788 0.131952" rpy="1.570796 0 0"/>
+    <mass value="0.001"/>
+    <inertia ixx="1e-08" iyy="1e-08" izz="1e-08" ixy="-0" iyz="0" ixz="0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.041184 0.395053 0.116897" rpy="1.570796 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/banhrang_mg996_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="ServoBracketU_1">
+  <inertial>
+    <origin xyz="0.043184 0.395053 0.116897" rpy="1.570796 0 0"/>
+    <mass value="0.001"/>
+    <inertia ixx="1e-08" iyy="1e-08" izz="1e-08" ixy="0" iyz="0" ixz="0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.043184 0.395053 0.116897" rpy="1.570796 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/ServoBracketU_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="link2_1">
+  <inertial>
+    <origin xyz="-0.018589 0.241827 0.182058" rpy="1.570796 0 0"/>
+    <mass value="0.399605"/>
+    <inertia ixx="0.000416" iyy="0.000382" izz="0.0001" ixy="0" iyz="3e-06" ixz="-0"/>
+  </inertial>
+  <visual>
+    <origin xyz="-0.001416 0.395053 0.166897" rpy="1.570796 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/link2_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="MG996R_servo__1__1">
+  <inertial>
+    <origin xyz="0.004982 0.317464 0.281776" rpy="1.570796 0 0"/>
+    <mass value="0.240069"/>
+    <inertia ixx="6.1e-05" iyy="3.6e-05" izz="4e-05" ixy="-0" iyz="-1e-06" ixz="-0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.022169 0.419214 0.266897" rpy="1.570796 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/MG996R_servo__1__1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="banhrang_mg996__1__1">
+  <inertial>
+    <origin xyz="0 0.327973 0.287441" rpy="1.570796 0 0"/>
+    <mass value="0.001"/>
+    <inertia ixx="1e-08" iyy="1e-08" izz="1e-08" ixy="0" iyz="-0" ixz="-0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.017169 0.405064 0.282397" rpy="1.570796 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/banhrang_mg996__1__1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="hopbut_1">
+  <inertial>
+    <origin xyz="-0.000015 0.339299 0.291792" rpy="1.570796 0 0"/>
+    <mass value="0.0513438"/>
+    <inertia ixx="6e-06" iyy="4e-06" izz="7e-06" ixy="0" iyz="-0" ixz="-0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.017169 0.405064 0.284397" rpy="1.570796 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/hopbut_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+</link>
+
+<link name="but_1">
+  <inertial>
+    <origin xyz="0.017169 0.368859 0.345206" rpy="1.570796 0 0"/>
+    <mass value="0.0725632"/>
+    <inertia ixx="1.6e-05" iyy="1.6e-05" izz="2e-06" ixy="-0" iyz="-0" ixz="0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.034338 0.410108 0.340162" rpy="1.570796 0 0"/>
+    <geometry>
+      <mesh filename="package://visual_servoing/meshes/newarm/but_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="pen_red"/>
+  </visual>
+</link>
+
+<joint name="rigid_1" type="fixed">
+  <origin xyz="-0.009205 0.011786 0.433355" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="DigitalServo8120_1"/>
+</joint>
+
+<joint name="base" type="revolute">
+  <origin xyz="-0.003945 0.013187 -0.014973" rpy="0 0 0"/>
+  <parent link="DigitalServo8120_1"/>
+  <child link="rds3120_1"/>
+  <axis xyz="0 0 -1"/>
+  <limit lower="-1.570796" upper="1.570796" effort="100" velocity="100"/>
+</joint>
+
+<joint name="shoulder" type="revolute">
+  <origin xyz="0.026245 0 -0.033247" rpy="0 0 0"/>
+  <parent link="rds3120_1"/>
+  <child link="rds3120_support_1"/>
+  <axis xyz="-1 0 0"/>
+  <limit lower="-1.570796" upper="1.570796" effort="100" velocity="100"/>
+</joint>
+
+<joint name="rigid_4" type="fixed">
+  <origin xyz="-0.01095 0.00495 -0.027" rpy="0 0 0"/>
+  <parent link="rds3120_support_1"/>
+  <child link="link1_1"/>
+</joint>
+
+<joint name="rigid_5" type="fixed">
+  <origin xyz="-0.019829 -0.029968 -0.1" rpy="0 0 0"/>
+  <parent link="link1_1"/>
+  <child link="Servo_mg996_BracketM_1"/>
+</joint>
+
+<joint name="rigid_6" type="fixed">
+  <origin xyz="-0.008 0.04925 -0.01987" rpy="0 0 0"/>
+  <parent link="Servo_mg996_BracketM_1"/>
+  <child link="MG996R_servo_1"/>
+</joint>
+
+<joint name="elbow" type="revolute">
+  <origin xyz="-0.0155 -0.03415 0.005" rpy="0 0 0"/>
+  <parent link="MG996R_servo_1"/>
+  <child link="banhrang_mg996_1"/>
+  <axis xyz="-1 0 0"/>
+  <limit lower="$(arg elbow_lower)" upper="$(arg elbow_upper)" effort="100" velocity="100"/>
+</joint>
+
+<joint name="rigid_8" type="fixed">
+  <origin xyz="-0.002 0 0" rpy="0 0 0"/>
+  <parent link="banhrang_mg996_1"/>
+  <child link="ServoBracketU_1"/>
+</joint>
+
+<joint name="rigid_22" type="fixed">
+  <origin xyz="0.0446 0 -0.05" rpy="0 0 0"/>
+  <parent link="ServoBracketU_1"/>
+  <child link="link2_1"/>
+</joint>
+
+<joint name="rigid_23" type="fixed">
+  <origin xyz="-0.023585 -0.024161 -0.1" rpy="0 0 0"/>
+  <parent link="link2_1"/>
+  <child link="MG996R_servo__1__1"/>
+</joint>
+
+<joint name="wrist_roll" type="revolute">
+  <origin xyz="0.005 0.01415 -0.0155" rpy="0 0 0"/>
+  <parent link="MG996R_servo__1__1"/>
+  <child link="banhrang_mg996__1__1"/>
+  <axis xyz="0 0 -1"/>
+  <limit lower="-1.570796" upper="1.570796" effort="100" velocity="100"/>
+</joint>
+
+<joint name="rigid_25" type="fixed">
+  <origin xyz="0 0 -0.002" rpy="0 0 0"/>
+  <parent link="banhrang_mg996__1__1"/>
+  <child link="hopbut_1"/>
+</joint>
+
+<joint name="rigid_26" type="fixed">
+  <origin xyz="-0.017169 -0.005044 -0.055765" rpy="0 0 0"/>
+  <parent link="hopbut_1"/>
+  <child link="but_1"/>
+</joint>
+
+<!-- Đầu bút = hopbut_1 + fk_newarm.TOOL_OFFSET (để so TF với FK) -->
+<link name="pen_tip"/>
+<joint name="pen_tip_fixed" type="fixed">
+  <origin xyz="0 0 -0.0625" rpy="0 0 0"/>
+  <parent link="hopbut_1"/>
+  <child link="pen_tip"/>
+</joint>
+
+<!-- Camera cố định (eye-to-hand), nhìn vào tâm bảng -->
+<link name="camera_link">
+  <inertial>
+    <mass value="0.01"/>
+    <inertia ixx="1e-05" iyy="1e-05" izz="1e-05" ixy="0" iyz="0" ixz="0"/>
+  </inertial>
+  <visual>
+    <geometry><box size="0.03 0.03 0.03"/></geometry>
+    <material name="camera_blue"/>
+  </visual>
+</link>
+<joint name="camera_joint" type="fixed">
+  <origin xyz="0.2 0.26 0.375382" rpy="0 0.232061 -2.007996"/>
+  <parent link="base_link"/>
+  <child link="camera_link"/>
+</joint>
+<link name="camera_optical_link"/>
+<!-- Khung quang học: z ra trước, x sang phải, y xuống -->
+<joint name="camera_optical_joint" type="fixed">
+  <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+  <parent link="camera_link"/>
+  <child link="camera_optical_link"/>
+</joint>
+
+</robot>

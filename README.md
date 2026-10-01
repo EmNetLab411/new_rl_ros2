@@ -203,6 +203,27 @@ Mirror deadband degrees (default 0.5):   ← Enter để dùng 0.5°
 ---
 
 
+## Xem vùng làm việc tay mới (newarm) — trang tương tác
+
+`docs/newarm_workspace_interactive.html` là một file HTML độc lập: không cần ROS, không cần cài gì, không cần server. Mở thẳng bằng trình duyệt:
+
+```bash
+xdg-open docs/newarm_workspace_interactive.html      # Linux
+# hoặc kéo file vào Chrome/Firefox; trên Windows/macOS bấm đúp vào file
+```
+
+Chạy được khi không có mạng (chỉ thiếu font chữ, trình duyệt tự dùng font thay thế).
+
+Trong trang:
+
+- **4 thanh góc khớp J1–J4** (độ, kèm lệnh servo 0–180 tương ứng) — kéo để xem tay và đầu bút di chuyển.
+- **Thiết lập bảng:** cửa sổ servo khuỷu (±90° hoặc [-30°,150°]), khoảng cách bảng tới trục J1, độ cao bảng, chiều dài bút, dung sai độ sâu.
+- **Nút:** về home, chạm tâm bảng, tìm vị trí bảng tốt nhất, chạy thử hình vuông 10 cm.
+- **3 khung nhìn:** nhìn thẳng vào bảng (đứng ở phía tay), nhìn ngang, và khung 3D xoay được bằng chuột (có sẵn các góc Chéo / Ngang / Từ trên / Từ sau tay; cung màu cam là góc J1).
+- Vùng tô màu trên bảng là vùng vẽ được chắc chắn với thiết lập hiện tại.
+
+FK/IK trong trang là bản JavaScript của `ros2_ws/src/visual_servoing/scripts/rl/fk_newarm.py` (đã so khớp với bản Python). Nếu đổi thiết kế tay thì trang này phải cập nhật theo. Mô phỏng Gazebo của tay mới: xem `CoVip/PLAN.md` mục 2c.
+
 ## Repo layout
 
 - `ros2_ws/` — Gazebo + `visual_servoing` stack (laptop)

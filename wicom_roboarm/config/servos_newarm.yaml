@@ -1,0 +1,55 @@
+# Cấu hình driver cho cánh tay MỚI — thiết kế cuối newarm_final (4 servo,
+# bút gắn cứng đồng trục J4, không có wrist_pitch / gripper).
+# Dùng: ros2 launch wicom_roboarm wicom_roboarm.launch.py servo_config:=servos_newarm.yaml
+# Hình học + ánh xạ độ<->rad: ros2_ws/src/visual_servoing/scripts/rl/fk_newarm.py
+# (SERVO_SPECS ở đó phải khớp với neutral/limits/đảo chiều ở đây).
+wicom_roboarm_unified:
+  ros__parameters:
+    # ── I2C / PCA9685 ──
+    i2c_bus: 1
+    i2c_address: "0x40"
+    pwm_frequency_hz: 50.0
+    oscillator_hz: 25000000
+    use_mux: false
+
+    # ── Behavior ──
+    enable_on_start: false
+    command_timeout_sec: 1.0
+    timeout_behavior: "hold"
+    shutdown_behavior: "off"
+
+    # ── Global pulse defaults ──
+    pulse_us_min: 500.0
+    pulse_us_max: 2500.0
+    period_us: 20000.0
+
+    # ── Joint → Channel mapping ──
+    # J1 Base       : TD-8120MG → CH0   (yaw, trục -Z)
+    # J2 Shoulder   : RDS3120   → CH1   (pitch, trục -X)
+    # J3 Elbow      : MG996R    → CH2   (pitch, trục -X)
+    # J4 Wrist Roll : MG996R    → CH3   (xoay bút quanh trục cẳng tay)
+    joint_names: ["base", "shoulder", "elbow", "wrist_roll"]
+    channels:    [0, 1, 2, 3]
+
+    # ── Per-joint pulse calibration (µs) ──
+    # Driver map lệnh 0-180 TUYẾN TÍNH vào [min, max]. Cả 4 servo là bản 180°.
+    # MG996R (analog): 600-2400 tránh kẹt cữ hành trình; hiệu chỉnh lại bằng
+    # cách đo góc thật ở lệnh 0/90/180.
+    pulse_us_min_by_joint: [500.0, 500.0, 600.0, 600.0]
+    pulse_us_max_by_joint: [2500.0, 2500.0, 2400.0, 2400.0]
+
+    # ── Neutral / Limits ──
+    # neutral 90° = URDF q=0 = tay treo thẳng xuống (giả định — cần xác nhận).
+    # Khuỷu: nếu lắp lệch sừng để có dải q3 [-30°,150°] thì q3=0 ứng lệnh 30°
+    # -> sửa home_deg trong fk_newarm.SERVO_SPECS (neutral ở đây chỉ là tư thế nghỉ).
+    neutral_deg: 90.0
+    neutral_deg_by_joint: [90.0, 90.0, 90.0, 90.0]
+
+    limits_min_deg_by_joint: [0.0, 0.0, 0.0, 0.0]
+    limits_max_deg_by_joint: [180.0, 180.0, 180.0, 180.0]
+
+    publish_rate_hz: 25.0
+    trajectory_update_rate_hz: 50.0
+    trajectory_profile: "min_jerk"
+    default_moving_time_sec: 0.0
+    command_deadband_deg: 0.0

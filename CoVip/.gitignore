@@ -108,3 +108,6 @@ calib/chessboard_raw/
 imgsz_probe/probe_*.onnx
 weights/
 # Model cần cho deploy_to_pi.sh được thêm riêng bằng `git add -f`
+
+# Báo cáo tiến độ: chỉ giữ ở máy, không đưa lên git
+reports/

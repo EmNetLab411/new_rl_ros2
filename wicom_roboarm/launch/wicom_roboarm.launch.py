@@ -1,4 +1,6 @@
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -6,7 +8,10 @@ import os
 
 def generate_launch_description():
     pkg_share = get_package_share_directory("wicom_roboarm")
-    servo_yaml = os.path.join(pkg_share, "config", "servos.yaml")
+    # servo_config:=servos_newarm.yaml để dùng cánh tay mới (5 servo)
+    servo_config_arg = DeclareLaunchArgument("servo_config", default_value="servos.yaml")
+    servo_yaml = PathJoinSubstitution(
+        [os.path.join(pkg_share, "config"), LaunchConfiguration("servo_config")])
 
     unified = Node(
         package="wicom_roboarm",
@@ -27,4 +32,4 @@ def generate_launch_description():
         ],
     )
 
-    return LaunchDescription([unified])
+    return LaunchDescription([servo_config_arg, unified])

@@ -1,0 +1,35 @@
+# Bộ điều khiển Gazebo cho tay mới (newarm, 4 khớp). Tên khớp trùng tên servo
+# của driver thật (wicom_roboarm/config/servos_newarm.yaml).
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+arm_controller:
+  ros__parameters:
+    joints:
+      - base
+      - shoulder
+      - elbow
+      - wrist_roll
+
+    command_interfaces:
+      - position
+
+    state_interfaces:
+      - position
+      - velocity
+
+    state_publish_rate: 50.0
+    action_monitor_rate: 20.0
+
+    allow_partial_joints_goal: false
+
+    constraints:
+      stopped_velocity_tolerance: 0.01
+      goal_time: 0.0

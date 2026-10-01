@@ -49,6 +49,7 @@ LOCAL_FILES=(
     "CoVip/scripts/calibrate_hand_eye.py"
     "CoVip/scripts/fk_roi_predictor.py"
     "CoVip/scripts/arm_models.py"
+    "CoVip/scripts/newarm_bringup.py"
     "CoVip/scripts/publish_camera_info.py"
     "CoVip/scripts/benchmark_tflite.py"
     "CoVip/scripts/inspect_tflite.py"
@@ -69,7 +70,7 @@ LOCAL_FILES=(
     # Tên "c920" là tên đặt sẵn; calib thật làm với C930e (2026-09-23).
     "CoVip/calib/c920_720p.npz"
     "ros2_ws/src/visual_servoing/scripts/rl/fk_ik_utils.py"
-    "ros2_ws/src/visual_servoing/scripts/rl/fk_assarm.py"
+    "ros2_ws/src/visual_servoing/scripts/rl/fk_newarm.py"
 )
 REMOTE_FILES=(
     "aeroscript/run_pi4_ros2.py"
@@ -77,6 +78,7 @@ REMOTE_FILES=(
     "aeroscript/scripts/calibrate_hand_eye.py"
     "aeroscript/scripts/fk_roi_predictor.py"
     "aeroscript/scripts/arm_models.py"
+    "aeroscript/scripts/newarm_bringup.py"
     "aeroscript/scripts/publish_camera_info.py"
     "aeroscript/scripts/benchmark_tflite.py"
     "aeroscript/scripts/inspect_tflite.py"
@@ -90,7 +92,7 @@ REMOTE_FILES=(
     "aeroscript/pen_pose_192_sc.tflite"
     "aeroscript/calib/c920_720p.npz"
     "ros2_ws/src/visual_servoing/scripts/rl/fk_ik_utils.py"
-    "ros2_ws/src/visual_servoing/scripts/rl/fk_assarm.py"
+    "ros2_ws/src/visual_servoing/scripts/rl/fk_newarm.py"
 )
 
 # Mở SẴN 1 kết nối SSH rồi cho mọi lệnh ssh/scp bên dưới dùng chung

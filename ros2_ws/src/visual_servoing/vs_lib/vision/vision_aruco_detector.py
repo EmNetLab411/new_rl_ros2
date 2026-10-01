@@ -68,6 +68,20 @@ class VisionArucoDetector(Node):
         self.declare_parameter('publish_raw_board_pose', True)
         self.declare_parameter('use_pose_cache', True)
         self.declare_parameter('cache_timeout', 1.0)
+        # Board geometry (defaults = original 120mm sim board). The printed
+        # newarm workspace board uses offset 0.075 / size 0.030 — see
+        # config/vision_board_newarm.yaml.
+        self.declare_parameter('board_marker_offset_m', OFFSET)
+        self.declare_parameter('board_marker_size_m', MARKER_SIZE)
+        self.board_marker_offset = float(self.get_parameter('board_marker_offset_m').value)
+        self.board_marker_size = float(self.get_parameter('board_marker_size_m').value)
+        _o, _h = self.board_marker_offset, self.board_marker_size / 2
+        self.board_config = {
+            0: get_marker_corners_3d(-_o,  _o, _h),  # Top-left
+            1: get_marker_corners_3d( _o,  _o, _h),  # Top-right
+            2: get_marker_corners_3d( _o, -_o, _h),  # Bottom-right
+            3: get_marker_corners_3d(-_o, -_o, _h),  # Bottom-left
+        }
         
         image_topic = self.get_parameter('image_topic').value
         camera_info_topic = self.get_parameter('camera_info_topic').value
@@ -150,7 +164,8 @@ class VisionArucoDetector(Node):
             f"raw_pose_topic={self.raw_board_pose_topic if self.publish_raw_board_pose else 'disabled'}"
         )
         self.get_logger().info(
-            f"[VisionAruco] Board size: {BOARD_SIZE_M*100:.0f}cm, "
+            f"[VisionAruco] Board markers: offset ±{self.board_marker_offset*1000:.1f}mm, "
+            f"size {self.board_marker_size*1000:.1f}mm, "
             f"Pose cache: {self.cache_timeout}s"
         )
 
@@ -228,8 +243,8 @@ class VisionArucoDetector(Node):
             image_points = []
             
             for i, marker_id in enumerate(ids.flatten()):
-                if marker_id in BOARD_CONFIG_3D:
-                    obj_pts = BOARD_CONFIG_3D[marker_id]
+                if marker_id in self.board_config:
+                    obj_pts = self.board_config[marker_id]
                     img_pts = corners[i][0]
                     object_points.append(obj_pts)
                     image_points.append(img_pts)

@@ -87,6 +87,7 @@ setup(
             'drawing_executor = vs_lib.nodes.drawing_executor_ros2:main',
             'vision_node = vs_lib.nodes.vision_node_ros2:main',
             'gazebo_drawing_visualizer = drawing.gazebo_visualizer:main',
+            'newarm_sim_draw = drawing.newarm_sim_draw:main',
             # Digital Twin
             'gazebo_state_mirror = digital_twin.gazebo_state_mirror:main',
             'gazebo_to_real_mirror = digital_twin.gazebo_to_real_mirror:main',
