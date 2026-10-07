@@ -257,7 +257,8 @@ def main():
     s.add_argument("--inverted", choices=("true", "false"))
     s.add_argument("--range", type=float, help="tổng hành trình servo (độ), mặc định 180")
     s.add_argument("--tool-offset", type=float, nargs=3, metavar=("X", "Y", "Z"),
-                   help="vector gốc hộp bút -> đầu bút (m)")
+                   help="vector đầu ra J4 (gốc hopbut_1) -> đầu bút (m); số CAD: 0 0 -0.0625 "
+                        "— đo lại trên tay thật")
     for name, helptext in (("home", "Đưa servo về home (dùng lúc lắp ráp)"),
                            ("directions", "Xác nhận chiều quay từng khớp"),
                            ("fk-check", "Kiểm FK bằng thước")):

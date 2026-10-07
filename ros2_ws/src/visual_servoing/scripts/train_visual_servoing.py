@@ -2738,12 +2738,23 @@ def train_pid_tuning(
         # Explicitly choose warm-start vs fresh start.
         # For changed-controller experiments, loading an older actor can poison the comparison.
         best_actor = os.path.join(agent.checkpoint_dir, 'actor_sac_best.pth')
+        fallback_best_actor = os.path.join(
+            os.path.dirname(__file__), 'checkpoints', f'sac_pid_tuning_{mode}_sim', 'actor_sac_best.pth'
+        )
+
+        model_to_load = None
         if os.path.exists(best_actor):
-            load_model = input("\n🧠 Load pre-trained PID tuning model? (y/n, default=n): ").strip().lower()
-            if load_model == 'y':
+            model_to_load = best_actor
+        elif os.path.exists(fallback_best_actor):
+            model_to_load = fallback_best_actor
+            print(f"\nℹ️  No local checkpoint found for backend '{control_backend}'. Fallback available from sim: {os.path.basename(fallback_best_actor)}")
+
+        if model_to_load:
+            load_model = input("\n🧠 Load pre-trained PID tuning model? (y/n, default=y): ").strip().lower()
+            if load_model != 'n':
                 try:
-                    agent.load_models(best_actor)
-                    print(f"   ✅ Loaded pre-trained PID tuning model")
+                    agent.load_models(model_to_load)
+                    print(f"   ✅ Loaded pre-trained PID tuning model from: {model_to_load}")
                 except Exception as e:
                     print(f"   ⚠️  Failed to load model: {e}")
                     print("   Starting with untrained agent")
@@ -3858,7 +3869,7 @@ def _plot_deploy_drawing_summary(endpoint_mm, avg_wp_mm, max_wp_mm, joint_errors
 
 
 def main():
-    """Main entry point with interactive menu"""
+    """Main entry point with interactive menu or direct CLI"""
     parser = argparse.ArgumentParser(description='Train RL agent for 6-DOF robot arm')
     parser.add_argument('--agent', type=str, default=None, choices=['sac'],
                         help='RL agent to use: sac (skips menu if provided)')
@@ -3873,17 +3884,42 @@ def main():
     parser.add_argument('--control-backend', type=str, default=None,
                         choices=sorted(SUPPORTED_CONTROL_BACKENDS),
                         help='Motion backend: sim, sim_to_real_shadow, or real_replay')
+    
+    # Direct CLI options
+    parser.add_argument('--option', '-o', type=str, default=None,
+                        choices=['1', '2', '3', '4', '5', '6', '7', '8', '9'],
+                        help='Direct menu option choice (1-9)')
+    parser.add_argument('--sub-option', '-s', type=str, default=None,
+                        help='Sub-option choice (e.g., a, b, c)')
+    parser.add_argument('--pid-backend', type=str, default=None,
+                        choices=['sim', 'sim_to_real_shadow', 'real_replay', 'pi_direct'],
+                        help='PID tuning control backend')
+    parser.add_argument('--require-board', type=str, default=None,
+                        choices=['y', 'n', 'yes', 'no'],
+                        help='Require live board detection (y/n)')
+    parser.add_argument('--replay-artifact', type=str, default=None,
+                        help='Path to replay artifact .pkl')
+    parser.add_argument('--replay-gains', type=str, default=None,
+                        help='Path to replay gains')
+    parser.add_argument('--segment-steps', type=int, default=None,
+                        help='Drawing segment steps (default: 20)')
+    parser.add_argument('--mirror-rate', type=float, default=None,
+                        help='Mirror publish rate Hz (default: 10)')
+    parser.add_argument('--mirror-deadband', type=float, default=None,
+                        help='Mirror deadband degrees (default: 0.5)')
+    parser.add_argument('--n-samples', type=int, default=None,
+                        help='Number of FK samples for training Neural IK Model')
 
     args = parser.parse_args()
 
-    # If manual mode flag is set
-    if args.manual:
-        manual_control_mode(control_backend=args.control_backend)
+    # If manual mode flag is set or option 1 is selected
+    if args.manual or args.option == '1':
+        backend = args.control_backend if args.control_backend else 'sim'
+        manual_control_mode(control_backend=backend)
         return
 
-    # If agent is specified via command line, skip menu
-    if args.agent is not None:
-        # Use command-line values or defaults
+    # If agent is specified via command line (legacy behavior)
+    if args.agent is not None and args.option is None:
         if args.episodes is None:
             args.episodes = NUM_EPISODES
         if args.max_steps is None:
@@ -3891,25 +3927,33 @@ def main():
         train(args)
         return
 
-    # Show interactive menu
-    choice = show_menu()
+    # Determine choice: from CLI option or interactive menu
+    if args.option is not None:
+        choice = args.option
+    else:
+        choice = show_menu()
 
     if choice == '1':
         # Run inline manual test mode
-        manual_control_mode()
+        backend = args.control_backend if args.control_backend else 'sim'
+        manual_control_mode(control_backend=backend)
         return  # Exit after manual mode
     elif choice == '2':
         args.agent = 'sac'
-        # Get training parameters interactively
-        episodes, max_steps = get_training_params()
+        if args.episodes is not None and args.max_steps is not None:
+            episodes, max_steps = args.episodes, args.max_steps
+        else:
+            episodes, max_steps = get_training_params()
         args.episodes = episodes
         args.max_steps = max_steps
         train(args)
     elif choice == '3':
         args.agent = 'sac'
         args.use_neural_ik = True
-        # Get training parameters interactively
-        episodes, max_steps = get_training_params()
+        if args.episodes is not None and args.max_steps is not None:
+            episodes, max_steps = args.episodes, args.max_steps
+        else:
+            episodes, max_steps = get_training_params()
         args.episodes = episodes
         args.max_steps = max_steps
         train(args)
@@ -3920,15 +3964,18 @@ def main():
         print("="*70)
 
         # Ask for number of samples
-        try:
-            n_samples_input = input("Number of FK samples (default 500000): ").strip()
-            if n_samples_input == '':
+        if args.n_samples is not None:
+            n_samples = args.n_samples
+        else:
+            try:
+                n_samples_input = input("Number of FK samples (default 500000): ").strip()
+                if n_samples_input == '':
+                    n_samples = 500000
+                else:
+                    n_samples = int(n_samples_input)
+            except ValueError:
+                print("Invalid input, using default 500000")
                 n_samples = 500000
-            else:
-                n_samples = int(n_samples_input)
-        except ValueError:
-            print("Invalid input, using default 500000")
-            n_samples = 500000
 
         nik = NeuralIK()
         positions, joints = nik.generate_training_data(n_samples=n_samples)
@@ -3943,7 +3990,10 @@ def main():
         args.agent = 'sac'
         args.use_neural_ik = False
         args.drawing_mode = True
-        episodes, max_steps = get_drawing_params()
+        if args.episodes is not None and args.max_steps is not None:
+            episodes, max_steps = args.episodes, args.max_steps
+        else:
+            episodes, max_steps = get_drawing_params()
         args.episodes = episodes
         args.max_steps = max_steps
         train_drawing(args)
@@ -3953,29 +4003,53 @@ def main():
         args.agent = 'sac'
         args.use_neural_ik = True
         args.drawing_mode = True
-        episodes, max_steps = get_drawing_params()
+        if args.episodes is not None and args.max_steps is not None:
+            episodes, max_steps = args.episodes, args.max_steps
+        else:
+            episodes, max_steps = get_drawing_params()
         args.episodes = episodes
         args.max_steps = max_steps
         train_drawing(args)
     elif choice == '7':
         # PID Tuning (RL-Optimized PID Gains) — Sub-menu
         print("\n🎛️ PID Tuning Mode:")
-        print("  a. 📍 Reaching (Random joint targets)")
-        print("  b. 🖋️  Drawing (Shape waypoints)")
-        sub = input("Select (a/b, default=a): ").strip().lower()
+        if args.sub_option is not None:
+            sub = args.sub_option.lower()
+        else:
+            print("  a. 📍 Reaching (Random joint targets)")
+            print("  b. 🖋️  Drawing (Shape waypoints)")
+            sub = input("Select (a/b, default=a): ").strip().lower()
+        
         mode = 'drawing' if sub == 'b' else 'reaching'
-        control_backend = prompt_pid_backend()
-        require_board_detection = input(
-            "Require live board detection? (y/N): "
-        ).strip().lower() == 'y'
+
+        if args.pid_backend is not None:
+            try:
+                control_backend = resolve_control_backend(args.pid_backend)
+            except Exception:
+                control_backend = 'sim'
+        else:
+            control_backend = prompt_pid_backend()
+
+        if args.require_board is not None:
+            require_board_detection = args.require_board.lower() in ('y', 'yes')
+        else:
+            require_board_detection = input(
+                "Require live board detection? (y/N): "
+            ).strip().lower() == 'y'
 
         replay_artifact_path = None
         replay_gains_path = None
         if control_backend == 'real_replay':
-            replay_artifact_path, replay_gains_path = prompt_pid_replay_paths(mode)
+            if args.replay_artifact is not None or args.replay_gains is not None:
+                replay_artifact_path = args.replay_artifact
+                replay_gains_path = args.replay_gains
+            else:
+                replay_artifact_path, replay_gains_path = prompt_pid_replay_paths(mode)
 
         segment_steps = 20
-        if mode == 'drawing':
+        if args.segment_steps is not None:
+            segment_steps = args.segment_steps
+        elif mode == 'drawing':
             steps_input = input("Drawing segment steps (default 20, lower = faster): ").strip()
             if steps_input:
                 try:
@@ -3994,25 +4068,34 @@ def main():
     elif choice == '8':
         # 🚀 Digital Twin Realtime Mirror
         print("\n🚀 Digital Twin Realtime Mirror:")
-        rate_input = input("Mirror publish rate Hz (default 10): ").strip()
-        try:
-            rate_hz = float(rate_input) if rate_input else 10.0
-        except ValueError:
-            rate_hz = 10.0
+        if args.mirror_rate is not None:
+            rate_hz = args.mirror_rate
+        else:
+            rate_input = input("Mirror publish rate Hz (default 10): ").strip()
+            try:
+                rate_hz = float(rate_input) if rate_input else 10.0
+            except ValueError:
+                rate_hz = 10.0
 
-        deadband_input = input("Mirror deadband degrees (default 0.5): ").strip()
-        try:
-            deadband = float(deadband_input) if deadband_input else 0.5
-        except ValueError:
-            deadband = 0.5
+        if args.mirror_deadband is not None:
+            deadband = args.mirror_deadband
+        else:
+            deadband_input = input("Mirror deadband degrees (default 0.5): ").strip()
+            try:
+                deadband = float(deadband_input) if deadband_input else 0.5
+            except ValueError:
+                deadband = 0.5
 
-        print("\nSelect training mode to run WITH mirror:")
-        print("  a. 📍 PID Reaching")
-        print("  b. 🖋️  PID Drawing      ← khuyến nghị test đầu tiên")
-        print("  c. 🎮 Manual Control")
-        sub = input("Select (a/b/c, default=b): ").strip().lower()
-        if not sub:
-            sub = 'b'
+        if args.sub_option is not None:
+            sub = args.sub_option.lower()
+        else:
+            print("\nSelect training mode to run WITH mirror:")
+            print("  a. 📍 PID Reaching")
+            print("  b. 🖋️  PID Drawing      ← khuyến nghị test đầu tiên")
+            print("  c. 🎮 Manual Control")
+            sub = input("Select (a/b/c, default=b): ").strip().lower()
+            if not sub:
+                sub = 'b'
 
         mode = 'drawing' if sub == 'b' else 'reaching'
 
@@ -4021,17 +4104,23 @@ def main():
         segment_steps = 20
 
         if sub in ('a', 'b'):
-            require_board_detection = input(
-                "Require live board detection? (y/N): "
-            ).strip().lower() == 'y'
+            if args.require_board is not None:
+                require_board_detection = args.require_board.lower() in ('y', 'yes')
+            else:
+                require_board_detection = input(
+                    "Require live board detection? (y/N): "
+                ).strip().lower() == 'y'
 
             if sub == 'b':
-                steps_input = input("Drawing segment steps (default 20, lower = faster): ").strip()
-                if steps_input:
-                    try:
-                        segment_steps = int(steps_input)
-                    except ValueError:
-                        pass
+                if args.segment_steps is not None:
+                    segment_steps = args.segment_steps
+                else:
+                    steps_input = input("Drawing segment steps (default 20, lower = faster): ").strip()
+                    if steps_input:
+                        try:
+                            segment_steps = int(steps_input)
+                        except ValueError:
+                            pass
 
         # Resolve path to sim_to_pi_mirror.py
         import subprocess
@@ -4074,24 +4163,30 @@ def main():
         print("   Pi phải đang chạy wicom_roboarm node trên cùng mạng.")
         print("   End-effector position được tính bằng FK (không cần TF2/Gazebo).")
         print()
-        print("  a. 📍 PID Reaching (Random joint targets)")
-        print("  b. 🖋️  PID Drawing (Shape waypoints) ← khuyến nghị")
-        print("  c. 🎮 Manual Control")
-        sub = input("Select (a/b/c, default=b): ").strip().lower()
-        if not sub:
-            sub = 'b'
+        if args.sub_option is not None:
+            sub = args.sub_option.lower()
+        else:
+            print("  a. 📍 PID Reaching (Random joint targets)")
+            print("  b. 🖋️  PID Drawing (Shape waypoints) ← khuyến nghị")
+            print("  c. 🎮 Manual Control")
+            sub = input("Select (a/b/c, default=b): ").strip().lower()
+            if not sub:
+                sub = 'b'
 
         mode = 'drawing' if sub == 'b' else 'reaching'
         segment_steps = 20
 
         if sub in ('a', 'b'):
             if sub == 'b':
-                steps_input = input("Drawing segment steps (default 20, lower = faster): ").strip()
-                if steps_input:
-                    try:
-                        segment_steps = int(steps_input)
-                    except ValueError:
-                        pass
+                if args.segment_steps is not None:
+                    segment_steps = args.segment_steps
+                else:
+                    steps_input = input("Drawing segment steps (default 20, lower = faster): ").strip()
+                    if steps_input:
+                        try:
+                            segment_steps = int(steps_input)
+                        except ValueError:
+                            pass
 
             train_pid_tuning(
                 mode=mode,

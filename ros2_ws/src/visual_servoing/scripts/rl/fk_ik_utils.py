@@ -183,6 +183,139 @@ def fk_with_orientation(q, raw=False) -> Tuple[Tuple[float,float,float], Tuple[f
     v_pen = (-T_ee[0][2], -T_ee[1][2], -T_ee[2][2])
     return pos, v_pen
 
+def fk_4dof(q4, raw=False, wrist_roll_deg=90.0, pen_deg=90.0) -> Tuple[float,float,float]:
+    """
+    FK cho biến thể 4-DOF: CÙNG cơ khí 6-DOF (hop_description/robot_arm2)
+    nhưng servo 4 (wrist_roll, Rev26) và servo 6 (pen, Rev30) bị khoá cố
+    định ở một góc servo cụ thể (độ, 0-180 — cùng thang với lệnh gửi
+    PCA9685). Chỉ còn 4 khớp điều khiển được: base, shoulder, elbow,
+    wrist_pitch — đúng như bộ kênh ch_base/ch_shoulder/ch_elbow/
+    ch_wrist_pitch trong wicom_roboarm_4dof_standalone.py.
+
+    q4: 4 góc [base, shoulder, elbow, wrist_pitch] — cùng quy ước với
+        fk(): agent-space [0, pi] nếu raw=False (mặc định), raw URDF/Gazebo
+        nếu raw=True.
+    wrist_roll_deg, pen_deg: góc servo (độ) mà servo 4 và servo 6 đang bị
+        khoá cứng trên phần cứng thật. Mặc định 90.0/90.0 vì khoá ở đúng vị
+        trí mặc định của mô phỏng (Gazebo/URDF q_int=0 cho cả 2 khớp) —
+        theo GAZEBO_TO_PI_JOINT_MAP trong control_backends.py, q_int=0 map
+        sang servo 90° cho wrist_roll VÀ pen (không phải servo 0°, vì URDF
+        đã nướng sẵn độ lệch lắp đặt -90° vào mô hình). CẦN THAY BẰNG GÓC
+        THỰC TẾ nếu robot của bạn khoá ở vị trí khác vị trí mặc định mô
+        phỏng, vì sai số FK sẽ tỉ lệ trực tiếp với sai số 2 góc này.
+    Trả về (x, y, z) trong hệ base_link, giống fk().
+    """
+    if len(q4) != 4:
+        raise ValueError(
+            f"Expected 4 joint angles [base, shoulder, elbow, wrist_pitch], got {len(q4)}")
+
+    offsets = [1.570796, 1.570796, 1.570796, 0.0, 1.570796, 1.570796]
+
+    if raw:
+        # q4 đã là q_int (raw URDF/Gazebo) cho 4 khớp tự do — dùng trực tiếp.
+        q_int_free = list(q4)
+    else:
+        # Trừ offset agent-space→URDF giống hệt fk(), chỉ áp cho 4 khớp tự do
+        # (base=offsets[0], shoulder=offsets[1], elbow=offsets[2], wrist_pitch=offsets[4]).
+        q_int_free = [
+            q4[0] - offsets[0],
+            q4[1] - offsets[1],
+            q4[2] - offsets[2],
+            q4[3] - offsets[4],
+        ]
+
+    # 2 khớp bị khoá: quy đổi từ góc servo thật (độ, thang PCA9685) sang
+    # q_int (raw URDF/Gazebo) theo ĐÚNG ánh xạ vật lý trong
+    # control_backends.py (GAZEBO_TO_PI_JOINT_MAP / pi_deg_to_gazebo_rad):
+    # q_int = radians(servo_deg - home_deg), với home_deg=90.0 và
+    # inverted=False cho CẢ HAI khớp wrist_roll (Rev26) và pen (Rev30).
+    # KHÔNG dùng mảng offsets[] ở trên — đó là offset agent-space→URDF
+    # riêng cho không gian hành động RL, hoàn toàn khác ánh xạ độ-servo-
+    # vật-lý này (dùng nhầm sẽ ra sai số góc rất lớn, đã từng bị lẫn ở
+    # bản trước).
+    PI_HOME_DEG_WRIST_ROLL = 90.0
+    PI_HOME_DEG_PEN = 90.0
+    wrist_roll_q_int = math.radians(wrist_roll_deg - PI_HOME_DEG_WRIST_ROLL)
+    pen_q_int         = math.radians(pen_deg        - PI_HOME_DEG_PEN)
+
+    q_int_6 = [
+        q_int_free[0], q_int_free[1], q_int_free[2],
+        wrist_roll_q_int, q_int_free[3], pen_q_int,
+    ]
+    # Toàn bộ q_int_6 giờ đã ở đúng dạng "raw" (q_int) cho fk() — gọi với
+    # raw=True để fk() dùng thẳng, không trừ offset lần nữa.
+    return fk(q_int_6, raw=True)
+
+
+def fk_matrix(q, raw=False):
+    """
+    Giống fk() nhưng trả về CẢ ma trận 4x4 đồng nhất (không chỉ vị trí) của
+    bibut_1 trong hệ base_link — cần cho hand-eye calibration (Phase 3),
+    nơi cần cả hướng (rotation) chứ không chỉ vị trí. Trả về list 4x4
+    (pure Python, không numpy, giữ đúng phong cách file này).
+    """
+    if len(q) != 6:
+        raise ValueError(f"Expected 6 joint angles, got {len(q)}")
+
+    if raw:
+        q_int = list(q)
+    else:
+        offsets = [1.570796, 1.570796, 1.570796, 0.0, 1.570796, 1.570796]
+        q_int = [q[i] - offsets[i] for i in range(6)]
+
+    T_r6  = _T(-0.046528, 0.031724, 0.748891)
+    T_r18 = _T(-0.093, 0.0, -0.01)
+    T_r19 = _T(0.04889, -0.028138, -0.00625)
+    T_j20 = _chain(_T(-0.034687, -0.0039, -0.0162), _Rz(-q_int[0]))
+    T_r21 = _T(-0.048931, -0.007, -0.033724)
+    T_j22 = _chain(_T(0.034687, -0.0192, -0.0039), _Ry(-q_int[1]))
+    T_j23 = _chain(_T(0.0, 0.0, -0.155), _Ry(q_int[2]))
+    T_r24 = _T(-0.0039, 0.0192, -0.034687)
+    T_r25 = _T(0.03375, 0.0362, -0.042816)
+    T_j26 = _chain(_T(0.0, -0.00995, -0.0148), _Rz(q_int[3] - 1.570796))
+    T_r27 = _T(0.0152, -0.023, -0.0425)
+    T_j28 = _chain(_T(-0.00995, -0.0148, 0.0), _Ry(-q_int[4]))
+    T_r29 = _T(-0.0152, 0.0075, -0.075)
+    T_j30 = _chain(_T(0.02045, 0.015, 0.0), _Ry(q_int[5]))
+    T_r32 = _T(0.0, 0.01225, -0.01)
+    T_r33 = _T(0.0, 0.0, -0.045)
+
+    return _chain(
+        T_r6, T_r18, T_r19, T_j20, T_r21, T_j22, T_j23,
+        T_r24, T_r25, T_j26, T_r27, T_j28, T_r29, T_j30,
+        T_r32, T_r33
+    )
+
+
+def fk_4dof_matrix(q4, raw=False, wrist_roll_deg=90.0, pen_deg=90.0):
+    """Giống fk_4dof() nhưng trả về ma trận 4x4 đầy đủ (xem fk_matrix())."""
+    if len(q4) != 4:
+        raise ValueError(
+            f"Expected 4 joint angles [base, shoulder, elbow, wrist_pitch], got {len(q4)}")
+
+    offsets = [1.570796, 1.570796, 1.570796, 0.0, 1.570796, 1.570796]
+    if raw:
+        q_int_free = list(q4)
+    else:
+        q_int_free = [
+            q4[0] - offsets[0],
+            q4[1] - offsets[1],
+            q4[2] - offsets[2],
+            q4[3] - offsets[4],
+        ]
+
+    PI_HOME_DEG_WRIST_ROLL = 90.0
+    PI_HOME_DEG_PEN = 90.0
+    wrist_roll_q_int = math.radians(wrist_roll_deg - PI_HOME_DEG_WRIST_ROLL)
+    pen_q_int         = math.radians(pen_deg        - PI_HOME_DEG_PEN)
+
+    q_int_6 = [
+        q_int_free[0], q_int_free[1], q_int_free[2],
+        wrist_roll_q_int, q_int_free[3], pen_q_int,
+    ]
+    return fk_matrix(q_int_6, raw=True)
+
+
 def test_fk():
     import sys
     home = fk([0,0,0,0,0,0])

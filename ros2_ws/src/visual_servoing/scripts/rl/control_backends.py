@@ -770,6 +770,11 @@ class PiDirectBackend(RealReplayBackend):
 
     def __init__(self, node):
         super().__init__(node)
+        self.real_joint_command_pub = node.create_publisher(
+            JointState,
+            '/pca9685_servo/command',
+            10,
+        )
         node.get_logger().info(
             "🤖 Pi-direct backend ready: training directly on hardware, "
             "reward computed via FK (no Gazebo needed)"
@@ -781,11 +786,17 @@ class PiDirectBackend(RealReplayBackend):
             self.node.gazebo_limits_low,
             self.node.gazebo_limits_high,
         )
-        traj = self.mapper.build_pi_trajectory_from_gazebo(target_positions, duration)
-        traj.header.stamp = self.node.get_clock().now().to_msg()
-        if not traj.joint_names or not traj.points:
-            return False
-        self.real_joint_trajectory_pub.publish(traj)
+        # Convert target_positions (radians) to Pi degrees dictionary
+        cmd_deg = self.mapper.gazebo_positions_to_pi_deg(target_positions)
+        
+        # Build JointState message
+        msg = JointState()
+        msg.header.stamp = self.node.get_clock().now().to_msg()
+        for name, val in cmd_deg.items():
+            msg.name.append(name)
+            msg.position.append(val)
+            
+        self.real_joint_command_pub.publish(msg)
         return True
 
 

@@ -45,6 +45,20 @@ class NewArm:
     def tip_point(self, q):
         return self._fk.fk_tip(q, self.tool_offset)
 
+    def servo_degs_from_q(self, q):
+        return [self._fk.q_to_servo_deg(n, v) for n, v in zip(self.joint_names, q)]
+
+    def ik_tip(self, target, q_prev=None, branch=(-1, -1)):
+        """IK vị trí đầu công cụ (m, base_link) -> q (rad) hoặc None.
+        Có q_prev: nghiệm gần q_prev nhất (bám liên tục, không nhảy nhánh).
+        Không có: nhánh vẽ `branch` (tay vươn về phía trước, khuỷu gập ra sau)."""
+        if q_prev is not None:
+            return self._fk.ik_tip_nearest(tuple(target), q_prev, tool_offset=self.tool_offset)
+        for q, b in self._fk.ik_tip_branches(tuple(target), tool_offset=self.tool_offset):
+            if b == branch:
+                return q
+        return None
+
 
 class Old4Dof:
     name = "old4dof"

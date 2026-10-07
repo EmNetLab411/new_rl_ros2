@@ -1,0 +1,5 @@
+{
+  "servos": {
+    "elbow": {"home_deg": 30.0}
+  }
+}

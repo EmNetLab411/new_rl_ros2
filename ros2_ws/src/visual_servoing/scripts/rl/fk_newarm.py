@@ -76,7 +76,10 @@ def q_to_servo_deg(joint: str, q: float) -> float:
 # Chỉ ảnh hưởng dự đoán ROI (Phase 4) và vẽ; hand-eye (Phase 3) không cần.
 TOOL_OFFSET = (0.0, 0.0, -0.0625)
 
-CALIB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "newarm_servo_calib.json")
+# Biến môi trường NEWARM_CALIB trỏ sang file khác (vd file riêng cho mô phỏng),
+# để chạy thử trong Gazebo không đụng tới số hiệu chỉnh của tay thật.
+CALIB_PATH = os.environ.get("NEWARM_CALIB") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "newarm_servo_calib.json")
 
 
 def _load_calib(path=CALIB_PATH):

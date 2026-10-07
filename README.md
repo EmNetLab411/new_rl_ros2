@@ -295,7 +295,45 @@ Run training menu (separate terminal):
 cd /home/ducanh/new_rl_ros2
 source .venv/bin/activate
 cd ros2_ws/src/visual_servoing/scripts
-python3 train_visual_servoing.py
+```
+
+## 💻 Command Line Interface (CLI) Mode
+
+Thay vì chọn bằng menu tương tác, bạn có thể truyền tham số trực tiếp qua dòng lệnh để bỏ qua các bước nhập thủ công (bypassing interactive menu).
+
+### Tham số CLI được hỗ trợ:
+
+- `--option`, `-o`: Lựa chọn Option chính (`1` đến `9`).
+- `--sub-option`, `-s`: Lựa chọn Option phụ/chế độ con (`a`, `b`, `c`).
+- `--episodes`: Số episodes training (chỉ dùng cho Option 2, 3, 5, 6, 7).
+- `--max-steps`: Số bước tối đa cho mỗi episode.
+- `--pid-backend`: Backend dùng cho PID Tuning (`sim`, `sim_to_real_shadow`, `real_replay`, `pi_direct`).
+- `--require-board`: Yêu cầu live board detection (`y`/`n`/`yes`/`no`).
+- `--segment-steps`: Số bước vẽ của segment (tốc độ vẽ: giá trị nhỏ hơn vẽ nhanh hơn).
+- `--mirror-rate`: Tần số gửi mirror từ Gazebo sang Pi (Hz, mặc định `10`).
+- `--mirror-deadband`: Ngưỡng lọc di chuyển khớp để tránh rung lắc (độ, mặc định `0.5`).
+- `--n-samples`: Số sample tạo dữ liệu cho Neural IK training.
+
+
+### Các ví dụ chạy CLI:
+1. **Chạy PID Tuning (vẽ hình) trên mô phỏng (Sim) ngay lập tức, bỏ qua mọi câu hỏi menu:**
+```bash
+   python3 train_visual_servoing.py --option 7 --sub-option b --pid-backend sim --require-board n --segment-steps 10
+```
+
+2. **Chạy Digital Twin Realtime Mirror (Option 8) với tốc độ vẽ nhanh và deadband tối ưu:**
+```bash
+   python3 train_visual_servoing.py -o 8 -s b --require-board y --segment-steps 5 --mirror-rate 10 --mirror-deadband 0.3
+```
+
+3. **Chạy Manual Control trực tiếp trên Pi (Option 9 - Manual):**
+```bash
+   python3 train_visual_servoing.py -o 9 -s c
+```
+
+4. **Huấn luyện Neural IK Model với 200,000 samples:**
+```bash
+   python3 train_visual_servoing.py -o 4 --n-samples 200000
 ```
 
 ## Square PID training
