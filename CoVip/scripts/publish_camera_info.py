@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Publish /camera_info từ file hiệu chuẩn calib/c920_720p.npz (Phase 2).
+Publish /camera_info từ file hiệu chuẩn calib/c930e_720p.npz (Phase 2).
 
 CẦN THIẾT trước khi chạy vision_aruco_detector (Phase 3) — nếu không có
 node này, vision_aruco_detector sẽ ÂM THẦM dùng ma trận K giả định cho
@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def main():
-    calib_path = ROOT / "calib" / "c920_720p.npz"
+    calib_path = ROOT / "calib" / "c930e_720p.npz"
     if not calib_path.exists():
         print(f"Chưa có {calib_path} — chạy scripts/calibrate_camera.py trước (Phase 2).",
               file=sys.stderr)

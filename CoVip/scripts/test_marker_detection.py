@@ -5,7 +5,7 @@ làm được NGAY với chỉ camera + bút, KHÔNG cần robot. Nên chạy tr
 làm Phase 3 thật (calibrate_hand_eye.py collect), tránh mất công dựng cả
 robot rồi mới phát hiện marker không detect được / sai dict / sai size.
 
-Chạy (từ thư mục CoVip, cần calib/c920_720p.npz đã có từ Phase 2):
+Chạy (từ thư mục CoVip, cần calib/c930e_720p.npz đã có từ Phase 2):
     python3 scripts/test_marker_detection.py --marker-id 0 \\
         --marker-size-mm 10 --dict DICT_4X4_50 --camera-name C930e
 

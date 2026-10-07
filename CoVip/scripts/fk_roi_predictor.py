@@ -17,7 +17,7 @@ Luồng:
 Chạy được ngay bây giờ (không cần Pi/robot/camera thật) để kiểm logic:
     python3 scripts/fk_roi_predictor.py --self-test
 
-Khi có đủ calib/c920_720p.npz (Phase 2) và calib/T_cam_to_base.npy (Phase 3):
+Khi có đủ calib/c930e_720p.npz (Phase 2) và calib/T_cam_to_base.npy (Phase 3):
     python3 scripts/fk_roi_predictor.py --roi-size 300
 """
 import argparse
@@ -35,7 +35,7 @@ from arm_models import add_arm_args, arm_from_args, joint_states_to_servo_degs  
 
 def load_calibration():
     """Đọc K/dist (Phase 2) và T_cam_to_base (Phase 3). Trả None nếu chưa có."""
-    cam_path = CALIB_DIR / "c920_720p.npz"
+    cam_path = CALIB_DIR / "c930e_720p.npz"
     hand_eye_path = CALIB_DIR / "T_cam_to_base.npy"
     K = dist = T_cam_to_base = None
     if cam_path.exists():
@@ -147,7 +147,7 @@ def main():
     if K is None or T_cam_to_base is None:
         missing = []
         if K is None:
-            missing.append(str(CALIB_DIR / "c920_720p.npz") + " (Phase 2)")
+            missing.append(str(CALIB_DIR / "c930e_720p.npz") + " (Phase 2)")
         if T_cam_to_base is None:
             missing.append(str(CALIB_DIR / "T_cam_to_base.npy") + " (Phase 3)")
         print("Chưa đủ file hiệu chuẩn, cần phần cứng thật để tạo:")

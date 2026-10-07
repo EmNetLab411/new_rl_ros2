@@ -91,22 +91,59 @@ Nếu báo không tìm thấy lệnh `ros2`: chạy `source /opt/ros/humble/setu
 | Trang chọn stream | http://192.168.50.1:8080/stream_viewer?topic=/aeroscript/pen_image |
 | Dữ liệu dạng JSON (x, y, z, detected, fps) | http://192.168.50.1:8081/ |
 
-Trên ảnh stream, góc phải hiện **TRACKING** (xanh) khi thấy bút, **NO TARGET** (đỏ) khi không thấy.
+**Chữ trên ảnh stream** — tiếng Anh, chữ trắng viền đen, mỗi vật một dòng, đơn vị mm, số nguyên:
 
-**Bảng góc trên-trái — vị trí đầu bút (Tip) so với camera, đơn vị mm.** Gốc toạ độ ở tâm ống kính: **X** dương sang phải, **Y** dương xuống dưới, **Z** dương hướng ra trước camera (khoảng cách theo trục nhìn). `D` là khoảng cách thẳng từ camera tới đầu bút. Chữ xám kèm `[giu cu]` nghĩa là vừa mất bút và đang giữ giá trị cuối.
+```
+PEN (mm) cam X+10 Y-5 Z410 | board x+2 y-1 | 12 mm from board | inside draw area
+BOARD (mm) cam X+8 Y-4 Z400 | markers seen 0 1 2 3 | tilt 35 deg | fit error 0.5 px
+15.0 FPS | delay 92 ms | pen found 98% of frames | CPU 55% | 62 C          (góc dưới)
+```
 
-**Bảng góc dưới-trái — hiệu năng:**
-
-| Dòng | Ý nghĩa |
+| Phần | Ý nghĩa |
 |---|---|
-| `cam->XYZ` | Từ lúc nhận frame từ camera tới lúc publish XYZ. Đây là độ trễ ảnh hưởng tới điều khiển |
-| `cam->anh` | Từ lúc nhận frame tới lúc publish ảnh debug (chưa gồm web server và mạng) |
-| `= frame cho model A + chay model B` | Tách `cam->XYZ`: A = frame nằm chờ từ lúc nhận tới lúc model bắt đầu chạy, B = thời gian model chạy. Phần còn lại (vài ms) là solvePnP/Kalman/publish |
-| `Bat but (2s)` | Tỉ lệ frame thấy bút trong ~2 giây gần nhất |
-| `CPU may` / `node` | % cả máy / % của riêng node, tính theo 1 nhân (tối đa 400% trên Pi 4) |
-| `RAM node` / `C` | RAM của node / nhiệt độ CPU |
+| `PEN … cam X Y Z` | Đầu bút so với camera: gốc ở tâm ống kính, **X** sang phải, **Y** xuống dưới, **Z** ra trước ống kính |
+| `board x y` | Đầu bút chiếu xuống mặt bảng: gốc ở dấu +, **x** sang phải, **y** lên trên (chỉ có khi chạy `--board`) |
+| `12 mm from board` | Đầu bút cách mặt bảng 12 mm theo phương vuông góc (0 = chạm bảng) |
+| `inside / OUTSIDE draw area` | Đầu bút nằm trong hay ngoài hình vuông vùng vẽ 100×100 mm |
+| `PEN not found` (đỏ) | Không thấy bút |
+| `BOARD … cam X Y Z` | Dấu + giữa bảng so với camera |
+| `markers seen 0 1 2 3` | ID các marker lần dò gần nhất còn thấy. `markers hidden (pose 7 s old)` = đang bị che, dùng vị trí bảng nhớ từ 7 giây trước |
+| `tilt 35 deg` | Bảng nghiêng 35° so với hướng nhìn thẳng của camera (0 = nhìn chính diện) |
+| `fit error 0.5 px` | Vị trí bảng tính ra lệch các góc marker trên ảnh trung bình 0,5 pixel (càng nhỏ càng tốt) |
+| `delay 92 ms` | Từ lúc frame tới chương trình đến lúc phát XYZ (chưa gồm ~30-60 ms bên trong camera) |
+| `pen found 98% of frames` | Tỉ lệ frame thấy bút trong ~2 giây gần nhất |
+| `CPU` / `C` | CPU cả máy / nhiệt độ CPU |
 
-Các mốc E2E tính từ lúc frame tới chương trình, chưa gồm thời gian bên trong camera (phơi sáng, nén, truyền USB, thường thêm ~30-60 ms). Các số này cũng có trong JSON ở port 8081.
+Hình vẽ trên ảnh đều nét mảnh để không che bút: 4 chấm điểm khớp của bút kèm tên, 3 trục của bút dài 15 mm. Số liệu chi tiết hơn (độ trễ từng chặng, RAM, …) nằm trong JSON port 8081 và trong log lượt chạy (mục 7).
+
+Ảnh stream luôn rộng 640 px: bắt ảnh 1280×720 thì node thu nhỏ trước khi gửi, nên stream không nặng thêm. Đổi bằng `--stream-width` (0 = gửi đúng cỡ bắt ảnh).
+
+### Đo đầu bút so với mặt phẳng vẽ (bảng 4 marker ArUco)
+
+Thêm `--board` vào lệnh Terminal 1. Camera dò 4 marker của bảng vẽ để xác định mặt phẳng; đưa bút vào là có toạ độ đầu bút **so với bảng**.
+
+```bash
+python3 -u run_pi4_ros2.py --model pen_pose_192_sc.tflite --device /dev/video0 \
+    --width 640 --height 360 --fourcc MJPG --conf 0.3 --threads 2 --board 2>&1 | grep -E "PEN|🎯|Calib|🔎|❌|📝"
+```
+
+Bảng in: `ros2_ws/src/visual_servoing/aruco_markers/workspace_board_newarm_A4.pdf` (A4, in 100%, marker 30 mm). In cỡ khác thì thêm `--board-marker-mm` và `--board-offset-mm` theo số đo thật.
+
+**Hệ toạ độ bảng (mm):** gốc ở dấu **+** giữa bảng. **x** sang phải, **y** lên trên (khi nhìn vào bảng). **Cách mặt bảng** là khoảng cách vuông góc từ đầu bút tới mặt bảng: 0 là chạm bảng, số dương là ở phía trước bảng.
+
+| Xem ở đâu | Nội dung |
+|---|---|
+| Log | `PEN … \| so với BẢNG x:+12.3 y:-4.5 cách mặt bảng: 31.0 mm (trong vùng vẽ)` |
+| Ảnh stream | Phần `board x… y… \| … mm from board` trên dòng `PEN`, và dòng `BOARD`. Khung vùng vẽ 100×100 mm (lục = bút ở trong, cam = ở ngoài); 2 trục bảng ở dấu + (đỏ = x, lục = y); chấm tím = hình chiếu đầu bút xuống bảng. **Bám bảng:** ô quanh mỗi marker kèm số ID — lục = lần dò gần nhất còn thấy, đỏ = đang bị che (vị trí suy từ lần thấy trước); chấm vàng = góc marker dò được thật |
+| Topic | `ros2 topic echo /aeroscript/pen_board_xyz` (Point, mm). Pose bảng: `/aeroscript/board_pose` |
+| JSON port 8081 | `pen_board_x/y/z`, `board_cam_x/y/z`, `board_tilt_deg`, `board_seen_ids`, `board_reproj_px`, `board_age_s`, `aruco_ms` |
+
+Cách dùng cho đúng:
+- Để camera thấy **đủ 4 marker** trước khi đưa bút vào (log `🎯 Dò ArUco: thấy bảng N/20`, N gần 20). Sau đó tay hoặc bút che bớt marker cũng không sao: node nhớ vị trí bảng.
+- **Camera và bảng nên đứng yên lúc đo.** Dời một trong hai thì node bám theo sau tối đa 2 lần dò (mặc định dò mỗi 3 frame, tức khoảng 0,4 giây ở 15 fps) miễn là camera còn thấy đủ 4 marker. Muốn bám nhanh hơn: `--aruco-every 2` hoặc `1` (tốn thêm CPU — đo bằng mục 7).
+- Nếu ô lục/đỏ lệch khỏi marker thật trên ảnh thì vị trí bảng đang nhớ đã cũ: bỏ tay ra cho camera thấy lại đủ 4 marker.
+- Khi đã thấy đủ 4 marker, node chỉ dò lại trong vùng ảnh quanh bảng (rẻ hơn dò cả khung); thiếu marker thì lần sau tự dò lại cả khung.
+- Kiểm tra nhanh: chạm đầu bút vào dấu + → x, y và "cách mặt bảng" đều gần 0.
 
 ### Dừng
 
@@ -139,10 +176,17 @@ Bấm `Ctrl+C` ở từng terminal.
 | `--conf` | Ngưỡng tin cậy, thấp hơn thì dễ nhận hơn nhưng dễ nhận nhầm | `0.3` – `0.55` |
 | `--threads` | Số nhân CPU cho model | `2` hoặc `3`. **Không dùng `4`** (chậm hơn vì chiếm hết CPU) |
 | `--focus --exposure` | Khoá lấy nét / phơi sáng thủ công | Bỏ trống = tự động |
-| `--calib` | File calib camera | `calib/c920_720p.npz` (mặc định). Thiếu file này thì XYZ sai |
+| `--calib` | File calib camera | `calib/c930e_720p.npz` (mặc định, calib lại 2026-10-07). Thiếu file này thì XYZ sai. Tự quy đổi cho 640×360 |
 | `--trust-motion` | Độ bám của bộ lọc: lớn hơn thì bám nhanh hơn nhưng rung hơn | `1.0`; thấy trễ thì `2`–`4`, thấy rung thì `0.5` |
 | `--no-filter` | Tắt bộ lọc, dùng thẳng kết quả từng frame | Chỉ để so sánh độ trễ |
 | `--ping-host` | Máy cần đo ping (chỉ có trong JSON port 8081) | Bỏ trống = laptop đang SSH vào Pi |
+| `--board` | Dò bảng vẽ 4 marker, phát toạ độ đầu bút so với bảng | Bật khi có bảng vẽ trong khung hình |
+| `--aruco-every` | Dò bảng mỗi N frame | `3` (mặc định). Nhỏ hơn thì bám bảng nhanh hơn, tốn CPU hơn |
+| `--pen-dims-mm` | Kích thước bút đo bằng thước: Tip→Tail, Tip→đường L-R, L↔R | Mặc định `64 44 23`. Khai sai thì khoảng cách sai đúng theo tỉ lệ đó |
+| `--stream-width` | Bề ngang ảnh stream | `640` (mặc định) |
+| `--run-tag` | Tên gắn vào file log của lượt chạy | Ví dụ `360p_bang` |
+| `--duration` | Tự dừng sau N giây | Dùng khi so sánh các lượt chạy |
+| `--no-log` / `--log-dir` | Tắt / đổi chỗ ghi log lượt chạy | Mặc định ghi vào `logs/` |
 
 ---
 
@@ -177,7 +221,7 @@ Dòng `🔎` in khoảng 5 giây một lần, cho biết vì sao mất nhận di
 
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Log báo `❌ KHÔNG tìm thấy file calib` | Chạy lại mục 2 để đưa `calib/c920_720p.npz` lên Pi |
+| Log báo `❌ KHÔNG tìm thấy file calib` | Chạy lại mục 2 để đưa `calib/c930e_720p.npz` lên Pi |
 | XYZ đuổi theo bút chậm | Tăng `--trust-motion` (vd `3`), hoặc thử `--no-filter` để so |
 | `Không mở được camera` | Kiểm tra camera đã cắm; tắt `usb_cam` nếu đang chạy; thử `--device /dev/video1`. Liệt kê camera: `for d in /sys/class/video4linux/video*; do echo "$d: $(cat $d/name)"; done` |
 | `No such file or directory` với file `.py` hoặc model | Chưa đưa code lên Pi → chạy lại mục 2 |
@@ -189,9 +233,51 @@ Dòng `🔎` in khoảng 5 giây một lần, cho biết vì sao mất nhận di
 
 ---
 
-## 7. Đo tài nguyên Pi (CPU, RAM, nhiệt độ)
+## 7. Log mỗi lượt chạy, kiểm sai số, so sánh cấu hình
 
-Mở thêm một terminal SSH trong lúc node đang chạy:
+### Log
+
+Mỗi lần chạy `run_pi4_ros2.py` tự ghi một file `~/aeroscript/logs/run_<ngày>_<giờ>[_<tag>].csv`: mỗi frame một dòng gồm toạ độ bút (so với camera và so với bảng), 4 điểm khớp trên ảnh, vị trí bảng, marker đang thấy, độ trễ từng chặng, thời gian dò bảng, CPU, RAM, nhiệt độ. Dòng đầu file là cấu hình lượt chạy. Lúc thoát (Ctrl+C) node in đường dẫn file.
+
+```bash
+cd ~/aeroscript
+python3 scripts/analyze_run.py --last              # lượt vừa chạy
+python3 scripts/analyze_run.py --last 2            # 2 lượt gần nhất, so sánh cạnh nhau
+python3 scripts/analyze_run.py logs/run_A.csv logs/run_B.csv
+```
+
+Kèm theo mỗi log là thư mục `run_…_frames/` chứa ảnh thô chụp mỗi 5 giây (`--snap-every`, 0 = tắt), để soi lại bút và bảng thật trên ảnh.
+
+Chép log và ảnh về laptop (chạy trên laptop): `mkdir -p ~/new_rl_ros2/CoVip/logs/pi && scp -r "piros2@192.168.50.1:~/aeroscript/logs/*" ~/new_rl_ros2/CoVip/logs/pi/`
+
+Với lượt có `--board`, `analyze_run.py` in thêm phần **Kiểm bảng**: tỉ lệ kích thước của bản in có đúng như khai không, và tiêu cự camera có khớp file calib không (cần camera thấy đủ 4 marker ít nhất vài giây, bảng nghiêng 25–40° so với hướng nhìn).
+
+### Kiểm sai số bằng bảng
+
+Chạy node với `--board`, chạm mũi bút vào **dấu +** và **4 góc vùng vẽ**, mỗi điểm **giữ yên 2–3 giây**, rồi Ctrl+C và chạy `analyze_run.py --last`. Phần "Bút đứng yên" liệt kê từng lần giữ yên:
+
+- toạ độ đo được so với camera và so với bảng, độ rung;
+- điểm chuẩn gần nhất và độ lệch (mm);
+- cột **đo/thật**: khoảng cách bút bị đo lệch mấy lần, tính bằng cách kéo đầu bút dọc tia nhìn tới mặt bảng (đúng khi mũi bút thật sự đang chạm bảng). `1.00` là đúng; `1.50` là đo xa gấp rưỡi.
+
+Nếu tỉ lệ đo/thật ổn định ở mọi điểm và khác 1, script in luôn bộ `--pen-dims-mm` cho khớp. Thử bộ số đó ngay trên log cũ, không cần chạy lại: `python3 scripts/analyze_run.py --last --pen-dims-mm A B C`.
+
+### So sánh cấu hình (có/không dò bảng, 360p/720p)
+
+```bash
+cd ~/aeroscript
+scripts/run_compare.sh                  # 4 lượt × 60 giây: 360p và 720p, không bảng và có bảng
+scripts/run_compare.sh 60 360 360b      # dò bảng tốn thêm bao nhiêu (ở 360p)
+scripts/run_compare.sh 60 360b 720b     # 360p so với 720p (đều có bảng)
+```
+
+Script chạy lần lượt từng cấu hình, mỗi lượt tự dừng, cuối cùng in bảng so sánh: fps, tỉ lệ bắt bút, thời gian giải mã ảnh, thời gian model, độ trễ camera→XYZ, thời gian và tần suất dò bảng, CPU cả máy và của node, RAM, nhiệt độ, độ rung khi bút đứng yên. So 2 lượt thì có thêm cột chênh lệch. Trong mỗi lượt hãy làm cùng một việc với bút để so sánh công bằng. `web_video_server` vẫn chạy ở cửa sổ khác như mọi lần; CPU của nó nằm trong dòng "CPU cả máy".
+
+Đổi model/camera/tuỳ chọn thêm bằng biến môi trường: `MODEL=… DEVICE=… EXTRA="--pen-dims-mm 43 29.5 15.5" scripts/run_compare.sh`.
+
+### Đo từng tiến trình
+
+Muốn tách riêng CPU/RAM của `web_video_server`, mở thêm một terminal SSH trong lúc node đang chạy:
 
 ```bash
 cd ~/aeroscript

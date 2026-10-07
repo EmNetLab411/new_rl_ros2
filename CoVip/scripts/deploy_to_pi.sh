@@ -50,11 +50,16 @@ LOCAL_FILES=(
     "CoVip/scripts/fk_roi_predictor.py"
     "CoVip/scripts/arm_models.py"
     "CoVip/scripts/newarm_bringup.py"
+    "CoVip/scripts/arm_io.py"
+    "CoVip/scripts/board_detect.py"
+    "CoVip/scripts/goto_board_center.py"
     "CoVip/scripts/publish_camera_info.py"
     "CoVip/scripts/benchmark_tflite.py"
     "CoVip/scripts/inspect_tflite.py"
     "CoVip/scripts/benchmark_onnx.py"
     "CoVip/scripts/monitor_resources.py"
+    "CoVip/scripts/analyze_run.py"
+    "CoVip/scripts/run_compare.sh"
     # Model bút train lại ở imgsz nhỏ hơn (PLAN.md mục 5c) — dataset_split,
     # yolov8n-pose, flip_idx đã sửa. .onnx luôn dùng được; .tflite là NCHW
     # (khác best_float32.tflite cũ là NHWC) — run_pi4_ros2.py tự nhận layout.
@@ -67,8 +72,9 @@ LOCAL_FILES=(
     "CoVip/imgsz_probe/pen_pose_192_sc.onnx"
     "CoVip/imgsz_probe/runs/pen_pose_192_sc/weights/best.tflite"
     # Calib camera — run_pi4_ros2.py đọc file này (--calib), thiếu thì XYZ sai.
-    # Tên "c920" là tên đặt sẵn; calib thật làm với C930e (2026-09-23).
-    "CoVip/calib/c920_720p.npz"
+    # Calib lại 2026-10-07 (C930e, 50 ảnh, fx 771.5 ở 720p). File cũ
+    # c920_720p.npz SAI tiêu cự ~18% do lỗi tinh chỉnh góc bàn cờ — không dùng.
+    "CoVip/calib/c930e_720p.npz"
     "ros2_ws/src/visual_servoing/scripts/rl/fk_ik_utils.py"
     "ros2_ws/src/visual_servoing/scripts/rl/fk_newarm.py"
 )
@@ -79,18 +85,23 @@ REMOTE_FILES=(
     "aeroscript/scripts/fk_roi_predictor.py"
     "aeroscript/scripts/arm_models.py"
     "aeroscript/scripts/newarm_bringup.py"
+    "aeroscript/scripts/arm_io.py"
+    "aeroscript/scripts/board_detect.py"
+    "aeroscript/scripts/goto_board_center.py"
     "aeroscript/scripts/publish_camera_info.py"
     "aeroscript/scripts/benchmark_tflite.py"
     "aeroscript/scripts/inspect_tflite.py"
     "aeroscript/scripts/benchmark_onnx.py"
     "aeroscript/scripts/monitor_resources.py"
+    "aeroscript/scripts/analyze_run.py"
+    "aeroscript/scripts/run_compare.sh"
     "aeroscript/pen_pose_224.onnx"
     "aeroscript/pen_pose_192.onnx"
     "aeroscript/pen_pose_224.tflite"
     "aeroscript/pen_pose_192.tflite"
     "aeroscript/pen_pose_192_sc.onnx"
     "aeroscript/pen_pose_192_sc.tflite"
-    "aeroscript/calib/c920_720p.npz"
+    "aeroscript/calib/c930e_720p.npz"
     "ros2_ws/src/visual_servoing/scripts/rl/fk_ik_utils.py"
     "ros2_ws/src/visual_servoing/scripts/rl/fk_newarm.py"
 )

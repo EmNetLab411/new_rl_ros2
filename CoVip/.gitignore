@@ -111,3 +111,7 @@ weights/
 
 # Báo cáo tiến độ: chỉ giữ ở máy, không đưa lên git
 reports/
+
+# Ảnh bàn cờ chụp để calib (tái tạo được, giống chessboard_raw)
+calib/chessboard_360p/
+calib/chessboard_720p/

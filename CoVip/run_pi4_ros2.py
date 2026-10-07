@@ -14,6 +14,10 @@ Topics:
   Publish   : /aeroscript/pen_image (sensor_msgs/Image)  — frame annotated (debug, web_video_server)
   Publish   : /aeroscript/pen_xyz   (geometry_msgs/Point)— tọa độ 3D (mm)
   Publish   : /aeroscript/pen_pose  (geometry_msgs/PoseStamped) — đầy đủ
+Khi chạy thêm --board (dò bảng vẽ 4 marker ArUco):
+  Publish   : /aeroscript/board_pose    (geometry_msgs/PoseStamped) — bảng trong hệ camera (m)
+  Publish   : /aeroscript/pen_board_xyz (geometry_msgs/Point) — ĐẦU BÚT trong hệ BẢNG (mm):
+              gốc ở dấu + giữa bảng, x sang phải, y lên trên, z = cách mặt bảng
 
 Cài đặt trên Pi 4:
     pip3 install "numpy<2" opencv-python onnxruntime
@@ -82,6 +86,7 @@ import numpy as np
 import cv2
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import SingleThreadedExecutor
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point, PoseStamped
 from std_msgs.msg import Header
@@ -142,6 +147,7 @@ class FrameGrabber(threading.Thread):
         # bản thân giải mã vốn đã rẻ.
         self._dec_n = 0
         self._dec_sum = 0.0
+        self.dec_ms = None      # thời gian giải mã frame gần nhất (ms)
 
     def request_next(self):
         """Vòng xử lý chính gọi hàm này NGAY KHI lấy frame ra để xử lý —
@@ -184,6 +190,7 @@ class FrameGrabber(threading.Thread):
                 self._frame_id += 1
             self._want.clear()
 
+            self.dec_ms = (t1 - t0) * 1000
             self._dec_sum += (t1 - t0)
             self._dec_n += 1
             if self._dec_n % 30 == 0:
@@ -394,6 +401,7 @@ class ONNXPoseInference(_PoseBackendBase):
         result = self._decode(preds, r, dw, dh)
         t3 = time.perf_counter()
         self._record_timing(t1 - t0, t2 - t1, t3 - t2)
+        self.last_stage_ms = ((t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000)
         return result
 
 
@@ -466,6 +474,7 @@ class TFLitePoseInference(_PoseBackendBase):
         result = self._decode(preds, r, dw, dh)
         t3 = time.perf_counter()
         self._record_timing(t1 - t0, t2 - t1, t3 - t2)
+        self.last_stage_ms = ((t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000)
         return result
 
     def _normalize_output(self, raw):
@@ -720,6 +729,68 @@ class SysStats(threading.Thread):
             time.sleep(2.0)
 
 
+class RunLogger:
+    """Ghi 1 file CSV cho MỖI LƯỢT CHẠY: mỗi frame xử lý 1 dòng (toạ độ bút,
+    bảng, điểm khớp, độ trễ từng chặng, CPU/RAM/nhiệt). Dòng đầu `# {...}` là
+    cấu hình lượt chạy. Đọc/so sánh bằng scripts/analyze_run.py.
+
+    Ghi qua bộ đệm của file, đẩy xuống đĩa mỗi ~2 giây — không tốn gì đáng kể
+    trên đường xử lý (15 dòng ngắn mỗi giây)."""
+
+    COLS = ["t", "det", "x", "y", "z", "bx", "by", "bz",
+            "tip_u", "tip_v", "tail_u", "tail_v", "l_u", "l_v", "r_u", "r_v", "kv_min",
+            "brd_x", "brd_y", "brd_z", "brd_qx", "brd_qy", "brd_qz", "brd_qw",
+            "brd_seen", "brd_err", "brd_age", "brd_corners",
+            "wait_ms", "pre_ms", "infer_ms", "model_ms", "xyz_ms", "img_ms", "dec_ms",
+            "aruco_ms", "aruco_n", "cpu_sys", "cpu_node", "rss_mb", "temp"]
+
+    def __init__(self, log_dir, tag, meta):
+        os.makedirs(log_dir, exist_ok=True)
+        name = "run_" + time.strftime("%Y%m%d_%H%M%S") + (f"_{tag}" if tag else "") + ".csv"
+        self.path = os.path.join(log_dir, name)
+        self._f = open(self.path, "w", buffering=1 << 16)
+        self._f.write("# " + json.dumps(meta, ensure_ascii=False) + "\n")
+        self._f.write(",".join(self.COLS) + "\n")
+        self._t0 = time.perf_counter()
+        self._t_flush = self._t0
+        self.n = 0
+        self.frames_dir = self.path[:-4] + "_frames"
+        self._t_snap = None
+
+    def snapshot(self, frame, every_s):
+        """Lưu ảnh THÔ (chưa vẽ gì) mỗi `every_s` giây vào <log>_frames/ — tên
+        file là thời điểm trong log, để soi lại sau: bút/bảng thật nằm ở đâu
+        trên ảnh, model đặt điểm khớp đúng chỗ chưa."""
+        now = time.perf_counter()
+        if every_s <= 0 or (self._t_snap is not None and now - self._t_snap < every_s):
+            return
+        self._t_snap = now
+        os.makedirs(self.frames_dir, exist_ok=True)
+        cv2.imwrite(os.path.join(self.frames_dir, f"t{now - self._t0:07.2f}.jpg"), frame,
+                    [cv2.IMWRITE_JPEG_QUALITY, 92])
+
+    @staticmethod
+    def _fmt(v):
+        if v is None:
+            return ""
+        if isinstance(v, (float, np.floating)):
+            return f"{v:.6g}"
+        return str(v)
+
+    def row(self, **kw):
+        now = time.perf_counter()
+        kw["t"] = f"{now - self._t0:.3f}"
+        self._f.write(",".join(self._fmt(kw.get(c)) for c in self.COLS) + "\n")
+        self.n += 1
+        if now - self._t_flush > 2.0:
+            self._f.flush()
+            self._t_flush = now
+
+    def close(self):
+        if not self._f.closed:
+            self._f.close()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 5. Geometry / Camera
 # ══════════════════════════════════════════════════════════════════════════════
@@ -768,9 +839,26 @@ class AeroScriptVisionNode(Node):
     def __init__(self, model_path: str, conf: float, device: str,
                  width: int, height: int, fourcc: str, focus, exposure,
                  n_threads: int, target_fps: float = 12.0,
-                 trust_motion: float = 1.0, calib_path: str = "calib/c920_720p.npz",
-                 no_filter: bool = False, ping_host: str = None):
+                 trust_motion: float = 1.0, calib_path: str = "calib/c930e_720p.npz",
+                 no_filter: bool = False, ping_host: str = None,
+                 board_cfg: dict = None, tool_marker_cfg: dict = None,
+                 stream_width: int = 640, log_cfg: dict = None, duration: float = 0.0,
+                 snap_every: float = 5.0):
         super().__init__("aeroscript_vision")
+        self._board_cfg, self._tool_marker_cfg = board_cfg, tool_marker_cfg
+        # Ảnh debug gửi đi rộng tối đa `stream_width` px: bắt ảnh 720p thì thu
+        # về 640 trước khi vẽ + gửi, nên chi phí stream không tăng theo độ
+        # phân giải bắt ảnh (ảnh thô 720p nặng gấp 4 lần 360p qua DDS).
+        self._stream_w = int(stream_width or 0)
+        self._render_busy = False
+        self._snap_every = snap_every
+        self._aruco_logged = 0                  # số lần dò đã ghi góc marker vào log
+        self.done = False                       # main() dừng vòng spin khi True
+        self._duration = duration if duration and duration > 0 else None
+        self._t_end = None                      # đặt khi xử lý frame đầu tiên
+        self.run_log = None
+        self._aruco_ms = None                   # thời gian lần dò ArUco gần nhất
+        self._aruco_count = 0                   # tổng số lần đã dò
         self.no_filter = no_filter
         self.stats = SysStats(ping_host)
         self.stats.start()
@@ -849,6 +937,56 @@ class AeroScriptVisionNode(Node):
             print(f"❌ KHÔNG tìm thấy file calib '{calib_path}' — đang dùng K ước "
                   f"lượng, XYZ SẼ SAI. Chép file calib lên Pi (deploy_to_pi.sh).")
 
+        # Dò bảng workspace (4 marker) và/hoặc 1 marker đơn trên đầu công cụ,
+        # trên ảnh THÔ (trước khi vẽ bảng chữ overlay — các bảng chữ nằm ở góc
+        # ảnh, đúng chỗ marker hay xuất hiện). Chạy trên thread riêng, mỗi
+        # `every` frame một lần, bỏ qua nếu lần trước chưa xong -> không chặn
+        # đường inference -> XYZ.
+        self.board_det = self.tool_det = None
+        self.board_trk = None
+        self._pen_board = None      # (x, y, z) mm của lần đo gần nhất, hoặc None
+        self._aruco_busy = False
+        self._aruco_n = 0
+        self._aruco_seen = {"board": 0, "tool": 0, "runs": 0}
+        if self._board_cfg or self._tool_marker_cfg:
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts"))
+            import board_detect
+            self._board_detect = board_detect
+            self._aruco_pool = ThreadPoolExecutor(max_workers=1)
+            self._aruco_every = max(1, int((self._board_cfg or self._tool_marker_cfg)["every"]))
+        if self._board_cfg:
+            self.board_det = board_detect.BoardDetector(
+                self.K, self.dist, self._board_cfg["offset_mm"] / 1000.0,
+                self._board_cfg["marker_mm"] / 1000.0)
+            self.pub_board = self.create_publisher(PoseStamped, "/aeroscript/board_pose", 1)
+            # Đầu bút trong hệ BẢNG (mm): gốc ở dấu + giữa bảng, x sang phải,
+            # y lên trên, z = khoảng cách tới mặt bảng (dương = phía trước bảng).
+            self.pub_pen_board = self.create_publisher(Point, "/aeroscript/pen_board_xyz", 1)
+            self.board_trk = board_detect.BoardTracker()
+            self._draw_half_mm = self._board_cfg.get("draw_mm", 100.0) / 2.0
+            self.get_logger().info(
+                f"🎯 Dò bảng: marker {self._board_cfg['marker_mm']:.0f}mm, ±{self._board_cfg['offset_mm']:.0f}mm "
+                f"-> /aeroscript/board_pose (mỗi {self._aruco_every} frame)")
+        if self._tool_marker_cfg:
+            self.tool_det = board_detect.SingleMarkerDetector(
+                self.K, self.dist, self._tool_marker_cfg["id"],
+                self._tool_marker_cfg["marker_mm"] / 1000.0, self._tool_marker_cfg["dict"])
+            self.pub_tool = self.create_publisher(PoseStamped, "/aeroscript/tool_marker_pose", 1)
+            self.get_logger().info(
+                f"🎯 Dò marker đầu công cụ: {self._tool_marker_cfg['dict']} id {self._tool_marker_cfg['id']}, "
+                f"{self._tool_marker_cfg['marker_mm']:.0f}mm -> /aeroscript/tool_marker_pose")
+
+        if log_cfg is not None:
+            meta = dict(log_cfg.get("meta") or {})
+            meta.update(width=real_w, height=real_h, stream_width=self._stream_w,
+                        K=[round(float(v), 3) for v in (self.K[0, 0], self.K[1, 1], self.K[0, 2], self.K[1, 2])],
+                        dist=[round(float(v), 5) for v in self.dist.ravel()],
+                        pen_3d=PEN_3D.tolist(), imgsz=int(self.model.imgsz),
+                        board=bool(self._board_cfg), board_cfg=self._board_cfg,
+                        start=time.strftime("%Y-%m-%d %H:%M:%S"))
+            self.run_log = RunLogger(log_cfg["dir"], log_cfg.get("tag"), meta)
+            self.get_logger().info(f"📝 Log lượt chạy: {self.run_log.path}")
+
         self.grabber.start()
         self._last_frame_id = -1
         # Timer poll nhanh (500Hz trần) — thực tế bị giới hạn bởi thời gian
@@ -887,83 +1025,138 @@ class AeroScriptVisionNode(Node):
                  e2e_xyz_ms=self._lat["xyz"], e2e_img_ms=self._lat["img"],
                  model_ms=self._lat["model"], cpu_sys=st.cpu_sys,
                  cpu_node=st.cpu_node, rss_mb=st.rss_mb, temp_c=st.temp,
-                 ping_ms=st.ping_ms)
+                 ping_ms=st.ping_ms,
+                 log_file=None if self.run_log is None else self.run_log.path)
+        if self.board_trk is not None:
+            trk, pb = self.board_trk, self._pen_board
+            bT = trk.T
+            d.update(board_detected=trk.T is not None, board_markers=trk.n_markers,
+                     board_seen_ids=sorted(self.board_det.last_seen),
+                     board_reproj_px=trk.err_px, aruco_ms=self._aruco_ms,
+                     board_cam_x=None if bT is None else float(bT[0, 3]) * 1000.0,
+                     board_cam_y=None if bT is None else float(bT[1, 3]) * 1000.0,
+                     board_cam_z=None if bT is None else float(bT[2, 3]) * 1000.0,
+                     board_tilt_deg=None if bT is None else float(
+                         np.degrees(np.arccos(min(1.0, abs(bT[2, 2]))))),
+                     board_age_s=trk.age(time.time()),
+                     board_frame="goc o dau + giua bang; x phai, y len, z = cach mat bang (mm)",
+                     pen_board_x=None if pb is None else pb[0],
+                     pen_board_y=None if pb is None else pb[1],
+                     pen_board_z=None if pb is None else pb[2])
         return d
 
     @staticmethod
-    def _text_box(frame, lines, x0, y0, color, s):
-        """Vẽ khối chữ trên nền tối mờ. lines: list chuỗi ASCII (putText
-        không vẽ được dấu tiếng Việt)."""
-        fs, lh = 0.32 * s, int(11 * s)
-        w = max(cv2.getTextSize(t, cv2.FONT_HERSHEY_SIMPLEX, fs, 1)[0][0] for t in lines)
-        h, W, H = lh * len(lines) + int(6 * s), frame.shape[1], frame.shape[0]
-        x0 = min(max(x0, 0), W - w - 8); y0 = min(max(y0, 0), H - h)
-        roi = frame[y0:y0 + h, x0:x0 + w + 8]
-        roi[:] = (roi * 0.3).astype(np.uint8)
-        for i, t in enumerate(lines):
-            cv2.putText(frame, t, (x0 + 4, y0 + lh * (i + 1)),
-                        cv2.FONT_HERSHEY_SIMPLEX, fs, color, 1, cv2.LINE_AA)
+    def _put_lines(frame, lines, x, y, s, from_bottom=False):
+        """Mỗi phần tử (chuỗi ASCII, màu) là 1 dòng chữ trắng/màu VIỀN ĐEN —
+        đọc được trên mọi nền mà không cần hộp nền che ảnh. Dòng nào dài quá
+        bề ngang ảnh thì cả khối tự thu nhỏ cho vừa."""
+        font, fs = cv2.FONT_HERSHEY_SIMPLEX, 0.4 * s
+        wmax = max(cv2.getTextSize(t, font, fs, 1)[0][0] for t, _ in lines)
+        fs *= min(1.0, (frame.shape[1] - 2 * x) / max(wmax, 1))
+        lh = int(round(34 * fs))
+        y0 = frame.shape[0] - int(4 * s) - lh * (len(lines) - 1) if from_bottom else y + lh
+        for i, (t, col) in enumerate(lines):
+            org = (x, y0 + lh * i)
+            cv2.putText(frame, t, org, font, fs, (0, 0, 0), 3, cv2.LINE_AA)
+            cv2.putText(frame, t, org, font, fs, col, 1, cv2.LINE_AA)
 
     def _draw_panels(self, frame, info):
-        s = frame.shape[1] / 640          # font to theo độ phân giải
+        """Mỗi vật 1 dòng, tiếng Anh, đơn vị mm, số nguyên:
+            PEN   — đầu bút so với camera (cam: X phải, Y xuống, Z ra trước
+                    ống kính); trên bảng (board: x phải, y lên, gốc ở dấu +);
+                    cách mặt bảng bao nhiêu mm; trong/ngoài vùng vẽ
+            BOARD — dấu + so với camera; ID các marker lần dò gần nhất còn
+                    thấy; góc nghiêng so với trục nhìn; sai số chiếu lại
+        và 1 dòng hiệu năng ở góc dưới-trái."""
+        s = frame.shape[1] / 640          # chữ to theo độ phân giải ảnh gửi đi
+        WHITE, RED = (255, 255, 255), (60, 60, 255)
         f = lambda v, fmt: "--" if v is None else fmt.format(v)
-
-        # Góc trên-trái: vị trí ĐẦU BÚT (Tip) trong hệ toạ độ CAMERA.
-        # PEN_3D đặt gốc ở Tip nên tvec của solvePnP chính là toạ độ Tip.
-        # Hệ camera OpenCV: gốc ở tâm quang học, X sang phải, Y xuống dưới,
-        # Z hướng ra trước ống kính (Z = khoảng cách theo trục nhìn).
+        lines = []
         if info["valid"]:
-            x, y, z, col = info["x"], info["y"], info["z"], (0, 255, 255)
-        elif info.get("last_valid_pose") is not None:
-            t = info["last_valid_pose"][1]
-            x, y, z, col = float(t[0][0]), float(t[1][0]), float(t[2][0]), (150, 150, 150)
+            t = f"PEN (mm) cam X{info['x']:+.0f} Y{info['y']:+.0f} Z{info['z']:.0f}"
+            pb = info.get("pen_board")
+            if pb is not None:
+                h = self._draw_half_mm
+                inside = abs(pb[0]) <= h and abs(pb[1]) <= h
+                t += (f" | board x{pb[0]:+.0f} y{pb[1]:+.0f} | {pb[2]:.0f} mm from board"
+                      f" | {'inside' if inside else 'OUTSIDE'} draw area")
+            lines.append((t, WHITE))
         else:
-            x = y = z = None; col = (150, 150, 150)
-        dist = None if z is None else float(np.sqrt(x * x + y * y + z * z))
-        tag = "" if info["valid"] else (" [giu cu]" if z is not None else " [mat but]")
-        self._text_box(frame, [
-            f"TIP/CAM (mm) X {f(x, '{:+.1f}')}  Y {f(y, '{:+.1f}')}  Z {f(z, '{:.1f}')}",
-            f"D {f(dist, '{:.1f}')}  (X phai, Y xuong, Z truoc){tag}",
-        ], int(4 * s), int(4 * s), col, s)
+            lines.append(("PEN not found", RED))
+        if "board_T" in info:
+            bT = info["board_T"]
+            if bT is None:
+                lines.append(("BOARD not found (need 2+ markers in view)", RED))
+            else:
+                bx, by, bz = (float(v) * 1000.0 for v in bT[:3, 3])
+                tilt = float(np.degrees(np.arccos(min(1.0, abs(bT[2, 2])))))
+                seen = sorted(info.get("board_seen") or {})
+                mk = ("markers seen " + " ".join(str(i) for i in seen)) if seen else \
+                    f"markers hidden (pose {info.get('board_age') or 0:.0f} s old)"
+                lines.append((f"BOARD (mm) cam X{bx:+.0f} Y{by:+.0f} Z{bz:.0f} | {mk}"
+                              f" | tilt {tilt:.0f} deg | fit error {f(info.get('board_err'), '{:.1f}')} px", WHITE))
+        self._put_lines(frame, lines, int(4 * s), int(2 * s), s)
 
-        # Góc trên-phải: trạng thái
-        cv2.putText(frame, "TRACKING" if info["valid"] else "NO TARGET",
-                    (frame.shape[1] - int(75 * s), int(14 * s)), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.4 * s, (0, 255, 100) if info["valid"] else (0, 0, 230), 1, cv2.LINE_AA)
-
-        # Góc dưới-trái: hiệu năng. E2E tính từ lúc frame tới chương trình
-        # (grab) — chưa gồm phơi sáng/nén/USB bên trong camera (~30-60ms).
-        # cam->XYZ ≈ cho model + chay model + vài ms solvePnP/Kalman/publish.
+        # Góc dưới-trái. "delay" = từ lúc frame tới chương trình đến lúc phát
+        # XYZ (chưa gồm ~30-60ms phơi sáng/nén/USB bên trong camera).
         L, st = self._lat, self.stats
-        self._text_box(frame, [
-            f"cam->XYZ {f(L['xyz'], '{:.0f}')} ms | cam->anh {f(L['img'], '{:.0f}')} ms",
-            f" = frame cho model {f(L['wait'], '{:.0f}')} + chay model {f(L['model'], '{:.0f}')} ms",
-            f"FPS {info['fps']:.1f} | Bat but (2s) {info['det_rate']:.0f}%",
-            f"CPU may {f(st.cpu_sys, '{:.0f}')}% | node {f(st.cpu_node, '{:.0f}')}%/{st.n_core * 100}",
-            f"RAM node {f(st.rss_mb, '{:.0f}')} MB | {f(st.temp, '{:.1f}')} C",
-        ], int(4 * s), frame.shape[0], (0, 255, 0), s)
+        self._put_lines(frame, [(
+            f"{info['fps']:.1f} FPS | delay {f(L['xyz'], '{:.0f}')} ms | pen found {info['det_rate']:.0f}% of frames"
+            f" | CPU {f(st.cpu_sys, '{:.0f}')}% | {f(st.temp, '{:.0f}')} C", WHITE)],
+            int(4 * s), 0, s, from_bottom=True)
+
+    def _draw_pen(self, frame, K, kpts, rvec, tvec, s, live):
+        """4 điểm khớp (chấm nhỏ + tên) và 3 trục của bút dài 15 mm, nét mảnh
+        để không che bút. `live`=False: đang giữ pose cũ (mất bút tạm thời)."""
+        colors = [(0, 255, 0), (0, 200, 255), (255, 100, 0), (100, 0, 255)]
+        for i, (px, py) in enumerate(np.round(kpts).astype(int)):
+            col = colors[i] if live else (90, 90, 90)
+            cv2.circle(frame, (int(px), int(py)), max(2, int(round(2 * s))), col, -1, cv2.LINE_AA)
+            if live:
+                cv2.putText(frame, ("Tip", "Tail", "L", "R")[i], (int(px) + 4, int(py) - 4),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.3 * s, col, 1, cv2.LINE_AA)
+        ax = np.array([[0, 0, 0], [15, 0, 0], [0, 15, 0], [0, 0, 15]], np.float64)
+        uv = cv2.projectPoints(ax, rvec, np.asarray(tvec, np.float64), K, self.dist)[0].reshape(-1, 2)
+        if np.all(np.isfinite(uv)) and np.abs(uv).max() < 1e5:
+            o = tuple(int(round(v)) for v in uv[0])
+            for q, col in zip(uv[1:], ((0, 0, 255), (0, 255, 0), (255, 0, 0))):
+                cv2.line(frame, o, tuple(int(round(v)) for v in q), col, 1, cv2.LINE_AA)
 
     def _render_and_publish(self, frame: np.ndarray, info: dict):
         """Chạy trên thread riêng — không chặn callback chính. Nhận frame
-        THÔ (chưa vẽ gì) + info (số liệu đã tính sẵn ở _process_frame), tự
-        vẽ toàn bộ overlay debug rồi encode/publish — tách hẳn phần vẽ ra
-        khỏi critical path để _process_frame() trả về nhanh hơn."""
+        THÔ (chưa vẽ gì, KHÔNG được vẽ đè lên vì thread dò ArUco còn đọc nó) +
+        info (số liệu đã tính sẵn ở _process_frame); thu ảnh về bề ngang
+        stream nếu cần, vẽ overlay lên bản đó rồi encode/publish."""
         try:
+            if self.run_log is not None:
+                self.run_log.snapshot(frame, self._snap_every)
+            h0, w0 = frame.shape[:2]
+            r = 1.0
+            if self._stream_w and w0 > self._stream_w:
+                r = self._stream_w / w0
+                frame = cv2.resize(frame, (self._stream_w, int(round(h0 * r))),
+                                   interpolation=cv2.INTER_AREA if w0 % self._stream_w == 0
+                                   else cv2.INTER_LINEAR)
+            else:
+                frame = frame.copy()
+            K = self.K.copy()
+            K[:2] *= r                    # K của ảnh đã thu nhỏ (dist không đổi)
+            s = frame.shape[1] / 640
+
             if info["valid"]:
-                labels = ["Tip", "Tail", "L", "R"]
-                colors = [(0,255,0), (0,200,255), (255,100,0), (100,0,255)]
-                for i, (px, py) in enumerate(info["kpts"].astype(int)):
-                    cv2.circle(frame, (px, py), 6, colors[i], -1)
-                    cv2.putText(frame, labels[i], (px+7, py-7),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, colors[i], 1)
-                cv2.drawFrameAxes(frame, self.K, self.dist, info["rvec"], info["tvec"], 40)
+                self._draw_pen(frame, K, info["kpts"] * r, info["rvec"], info["tvec"], s, True)
             elif info.get("last_valid_pose") is not None:
                 # Đóng băng hiển thị khi mất tracking tạm thời (< RESET frames)
                 kpts_frozen, tvec_frozen, rvec_frozen = info["last_valid_pose"]
-                for px, py in kpts_frozen.astype(int):
-                    cv2.circle(frame, (px, py), 6, (80,80,80), -1)
-                cv2.drawFrameAxes(frame, self.K, self.dist, rvec_frozen, tvec_frozen, 40)
+                self._draw_pen(frame, K, kpts_frozen * r, rvec_frozen, tvec_frozen, s, False)
 
+            if info.get("board_T") is not None:
+                self._board_detect.draw_board_tracking(
+                    frame, K, self.dist, info["board_T"], self.board_det.obj,
+                    info.get("board_seen") or {}, r)
+                self._board_detect.draw_workspace(
+                    frame, K, self.dist, info["board_T"], self._draw_half_mm / 1000.0,
+                    None if info.get("pen_board") is None else np.array(info["pen_board"]) / 1000.0)
             self._draw_panels(frame, info)
 
             out_msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
@@ -973,19 +1166,71 @@ class AeroScriptVisionNode(Node):
                 self._ema("img", (time.perf_counter() - info["t_cap"]) * 1000)
         except Exception as e:
             self.get_logger().error(f"Render/publish (async): {e}")
+        finally:
+            self._render_busy = False
 
     def _on_timer(self):
         # Lấy frame mới nhất từ FrameGrabber — nếu chưa có frame mới kể từ
         # lần xử lý trước (frame_id không đổi), bỏ qua ngay, không xử lý lại
         # frame cũ. Đây là điểm thay thế cho việc subscribe /image_raw.
+        if self._t_end is not None and time.time() >= self._t_end:
+            self.done = True
+            return
         frame, fid, t_cap = self.grabber.get_latest()
         if frame is None or fid == self._last_frame_id:
             return
         self._last_frame_id = fid
+        if self._duration and self._t_end is None:
+            self._t_end = time.time() + self._duration
         # Cho phép thread nền giải mã frame kế tiếp NGAY BÂY GIỜ, để việc đó
         # chạy song song với _process_frame() bên dưới thay vì nối đuôi.
         self.grabber.request_next()
         self._process_frame(frame, t_cap)
+
+    def _detect_aruco(self, frame):
+        """Thread phụ: dò bảng / marker đầu công cụ trên ảnh thô rồi publish pose
+        (mét, hệ camera OpenCV)."""
+        try:
+            stamp = self.get_clock().now().to_msg()
+            self._aruco_seen["runs"] += 1
+            for det, pub, key in ((self.board_det, getattr(self, "pub_board", None), "board"),
+                                  (self.tool_det, getattr(self, "pub_tool", None), "tool")):
+                if det is None:
+                    continue
+                if key == "board":
+                    t0 = time.perf_counter()
+                    res = det.detect(frame, self.board_trk.T)
+                    self._aruco_ms = (time.perf_counter() - t0) * 1000
+                    self._aruco_count += 1
+                else:
+                    res = det.detect(frame)
+                if res is None:
+                    continue
+                T = res[0] if isinstance(res, tuple) else res
+                if key == "board":
+                    # Bảng + camera đứng yên: phát pose đã làm mượt (xem BoardTracker)
+                    T = self.board_trk.update(T, res[1], res[2], time.time())
+                pos, quat = self._board_detect.T_to_pose(T)
+                ps = PoseStamped()
+                ps.header = Header(); ps.header.stamp = stamp; ps.header.frame_id = "camera"
+                ps.pose.position.x, ps.pose.position.y, ps.pose.position.z = pos
+                (ps.pose.orientation.x, ps.pose.orientation.y,
+                 ps.pose.orientation.z, ps.pose.orientation.w) = quat
+                pub.publish(ps)
+                self._aruco_seen[key] += 1
+            if self._aruco_seen["runs"] >= 20:
+                a = self._aruco_seen
+                parts = []
+                if self.board_det is not None:
+                    parts.append(f"bảng {a['board']}/{a['runs']}")
+                if self.tool_det is not None:
+                    parts.append(f"marker đầu công cụ {a['tool']}/{a['runs']}")
+                print("🎯 Dò ArUco: thấy " + ", ".join(parts) + " lần gần nhất")
+                self._aruco_seen = {"board": 0, "tool": 0, "runs": 0}
+        except Exception as e:
+            self.get_logger().error(f"Dò ArUco: {e}")
+        finally:
+            self._aruco_busy = False
 
     def _ema(self, key, ms, a=0.2):
         old = self._lat[key]
@@ -1003,14 +1248,24 @@ class AeroScriptVisionNode(Node):
         dt_since_last = (now_t - self._last_infer_t) if self._last_infer_t > 0 else None
         self._last_infer_t = now_t
 
+        if self.board_det is not None or self.tool_det is not None:
+            self._aruco_n += 1
+            if self._aruco_n % self._aruco_every == 0 and not self._aruco_busy:
+                self._aruco_busy = True
+                # Không copy: frame này không ai vẽ đè (thread vẽ làm trên bản riêng)
+                self._aruco_pool.submit(self._detect_aruco, frame)
+
         # ── BOTTLENECK chính của toàn pipeline — không song song hoá được
         # vì mọi bước sau (solvePnP, Kalman, publish) phụ thuộc kết quả này.
         t_m0 = time.perf_counter()
         kpts, kv = self.model(frame)
         t_m1 = time.perf_counter()
+        wait_ms = (t_m0 - t_cap) * 1000 if t_cap else None
+        model_ms = (t_m1 - t_m0) * 1000
+        xyz_ms = None
         if t_cap:
-            self._ema("wait", (t_m0 - t_cap) * 1000)
-        self._ema("model", (t_m1 - t_m0) * 1000)
+            self._ema("wait", wait_ms)
+        self._ema("model", model_ms)
         valid = (kpts is not None and kv is not None
                  and np.all(kv > 0.45) and not np.any(kpts == 0.0))
 
@@ -1057,13 +1312,27 @@ class AeroScriptVisionNode(Node):
                 ps.pose.position.z = z / 1000.0
                 ps.pose.orientation.w = 1.0
                 self.pub_pose.publish(ps)
+
+                # Đầu bút so với mặt phẳng vẽ. Dùng pose bảng gần nhất kể cả khi
+                # bảng đang bị tay/bút che (camera và bảng đứng yên nên pose cũ
+                # vẫn đúng); tuổi của pose được hiện trên ảnh để biết.
+                pb = None
+                if self.board_trk is not None and self.board_trk.T is not None:
+                    pb = self._board_detect.cam_to_board(
+                        self.board_trk.T, [x / 1000.0, y / 1000.0, z / 1000.0]) * 1000.0
+                    pb = (float(pb[0]), float(pb[1]), float(pb[2]))
+                    pt_b = Point(); pt_b.x, pt_b.y, pt_b.z = pb
+                    self.pub_pen_board.publish(pt_b)
+                self._pen_board = pb
                 if t_cap:
-                    self._ema("xyz", (time.perf_counter() - t_cap) * 1000)
+                    xyz_ms = (time.perf_counter() - t_cap) * 1000
+                    self._ema("xyz", xyz_ms)
             else:
                 valid = False
                 self._diag["pnp_fail"] += 1
 
         if not valid:
+            self._pen_board = None
             self.lost += 1
             if self.lost >= self.RESET:
                 self.kf.reset()
@@ -1091,6 +1360,11 @@ class AeroScriptVisionNode(Node):
         del self._det_hist[:-30]
         draw_info = {"valid": valid, "fps": self._fps, "t_cap": t_cap,
                      "det_rate": sum(self._det_hist) / len(self._det_hist) * 100}
+        if self.board_trk is not None:
+            trk = self.board_trk
+            draw_info.update(board_T=trk.T, board_n=trk.n_markers, board_err=trk.err_px,
+                             board_age=trk.age(time.time()), pen_board=self._pen_board,
+                             board_seen=self.board_det.last_seen)
         if valid:
             draw_info.update(kpts=kpts_f, rvec=rvec, tvec=tf, x=x, y=y, z=z)
         else:
@@ -1098,11 +1372,59 @@ class AeroScriptVisionNode(Node):
             # >= RESET) — giữ nguyên hành vi cũ: chỉ vẽ "đóng băng" khi còn
             # pose gần nhất trong ngưỡng RESET frame.
             draw_info["last_valid_pose"] = self.last_valid_pose
-        self._publish_pool.submit(self._render_and_publish, frame.copy(), draw_info)
+        # Thread vẽ còn bận frame trước thì bỏ ảnh debug của frame này — không
+        # để ảnh xếp hàng (XYZ không bị ảnh hưởng, nó đã phát ở trên).
+        if not self._render_busy:
+            self._render_busy = True
+            self._publish_pool.submit(self._render_and_publish, frame, draw_info)
+
+        if self.run_log is not None:
+            st = self.stats
+            row = dict(det=int(valid), wait_ms=wait_ms, model_ms=model_ms, xyz_ms=xyz_ms,
+                       img_ms=self._lat["img"], dec_ms=self.grabber.dec_ms,
+                       cpu_sys=st.cpu_sys, cpu_node=st.cpu_node, rss_mb=st.rss_mb, temp=st.temp)
+            stage = getattr(self.model, "last_stage_ms", None)
+            if stage:
+                row.update(pre_ms=stage[0], infer_ms=stage[1])
+            if kv is not None:
+                row["kv_min"] = float(np.min(kv))
+            if valid:
+                k = np.asarray(kpts_f, np.float64)
+                row.update(x=x, y=y, z=z,
+                           tip_u=k[0, 0], tip_v=k[0, 1], tail_u=k[1, 0], tail_v=k[1, 1],
+                           l_u=k[2, 0], l_v=k[2, 1], r_u=k[3, 0], r_v=k[3, 1])
+                if self._pen_board is not None:
+                    row.update(bx=self._pen_board[0], by=self._pen_board[1], bz=self._pen_board[2])
+            if self.board_trk is not None:
+                trk = self.board_trk
+                row.update(aruco_ms=self._aruco_ms, aruco_n=self._aruco_count)
+                if self._aruco_count != self._aruco_logged:
+                    # Góc marker dò được (px) của lần dò mới nhất, ghi 1 lần:
+                    # "id:u1 v1 u2 v2 u3 v3 u4 v4;id:..." — để kiểm lại hình
+                    # học bảng và tiêu cự camera từ log (analyze_run.py).
+                    self._aruco_logged = self._aruco_count
+                    row["brd_corners"] = ";".join(
+                        f"{i}:" + " ".join(f"{v:.2f}" for v in np.asarray(cn).ravel())
+                        for i, cn in sorted(self.board_det.last_seen.items())) or "-"
+                if trk.T is not None:
+                    pos, q = self._board_detect.T_to_pose(trk.T)
+                    row.update(brd_x=pos[0] * 1000.0, brd_y=pos[1] * 1000.0, brd_z=pos[2] * 1000.0,
+                               brd_qx=q[0], brd_qy=q[1], brd_qz=q[2], brd_qw=q[3],
+                               brd_seen="".join(str(i) for i in sorted(self.board_det.last_seen)) or "-",
+                               brd_err=trk.err_px, brd_age=trk.age(time.time()))
+            self.run_log.row(**row)
 
         if valid:
-            self.get_logger().info(
-                f"PEN  X:{x:7.1f}  Y:{y:7.1f}  Z:{z:7.1f} mm  FPS:{self._fps:.1f}")
+            pb = self._pen_board
+            if pb is not None:
+                h = self._draw_half_mm
+                where = "trong vùng vẽ" if abs(pb[0]) <= h and abs(pb[1]) <= h else "NGOÀI vùng vẽ"
+                self.get_logger().info(
+                    f"PEN  X:{x:7.1f}  Y:{y:7.1f}  Z:{z:7.1f} mm  FPS:{self._fps:.1f}  |  "
+                    f"so với BẢNG  x:{pb[0]:+7.1f}  y:{pb[1]:+7.1f}  cách mặt bảng:{pb[2]:6.1f} mm  ({where})")
+            else:
+                self.get_logger().info(
+                    f"PEN  X:{x:7.1f}  Y:{y:7.1f}  Z:{z:7.1f} mm  FPS:{self._fps:.1f}")
             self._diag["ok"] += 1
 
         self._diag_n += 1
@@ -1164,7 +1486,7 @@ def main():
                              "hơn giữa các lần đo thưa ở FPS thấp — đổi lại phản ứng "
                              "chậm hơn khi bút đổi hướng đột ngột. Tăng lên (ví dụ "
                              "2.0) nếu thấy quỹ đạo bị 'trễ' theo sau chuyển động thật.")
-    parser.add_argument("--calib", default="calib/c920_720p.npz",
+    parser.add_argument("--calib", default="calib/c930e_720p.npz",
                         help="File calib camera (scripts/calibrate_camera.py). K "
                              "tự quy đổi theo độ phân giải đang chạy, nên giữ cùng "
                              "tỉ lệ khung với lúc calib (1280x720 -> 640x360 được).")
@@ -1174,7 +1496,47 @@ def main():
     parser.add_argument("--ping-host", default=None,
                         help="Máy cần đo ping (chỉ có trong JSON port 8081). Bỏ trống = tự "
                              "lấy IP laptop đang ssh vào Pi (biến SSH_CLIENT).")
+    parser.add_argument("--board", action="store_true",
+                        help="Dò bảng workspace 4 marker trên ảnh thô: phát /aeroscript/board_pose "
+                             "và toạ độ đầu bút so với bảng /aeroscript/pen_board_xyz (mm)")
+    parser.add_argument("--board-offset-mm", type=float, default=75.0,
+                        help="Tâm marker cách tâm bảng (mm). Bảng in tay mới: 75")
+    parser.add_argument("--board-marker-mm", type=float, default=30.0,
+                        help="Cạnh marker của bảng (mm) — ĐO LẠI sau khi in")
+    parser.add_argument("--pen-dims-mm", type=float, nargs=3, default=None,
+                        metavar=("DAI", "VI_TRI_DIA", "RONG"),
+                        help="Kích thước bút ĐO BẰNG THƯỚC (mm): Tip→Tail, Tip→đường nối L-R, "
+                             "khoảng cách L↔R. Mặc định 64 44 23. Sai kích thước → Z sai "
+                             "đúng theo tỉ lệ đó")
+    parser.add_argument("--board-draw-mm", type=float, default=100.0,
+                        help="Cạnh vùng vẽ ở giữa bảng (mm) — để báo bút TRONG/NGOÀI vùng vẽ")
+    parser.add_argument("--aruco-every", type=int, default=3,
+                        help="Dò ArUco mỗi N frame (1 = mọi frame; tốn thêm CPU). Bảng bị dời "
+                             "thì pose bám kịp sau tối đa 2 lần dò: N=3 ở 15fps là ~0,4 giây")
+    parser.add_argument("--stream-width", type=int, default=640,
+                        help="Bề ngang tối đa của ảnh debug gửi đi (px). Bắt ảnh lớn hơn thì "
+                             "thu nhỏ về cỡ này trước khi vẽ + gửi. 0 = gửi đúng cỡ bắt ảnh")
+    parser.add_argument("--log-dir", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs"),
+                        help="Thư mục ghi log từng lượt chạy (run_<ngày>_<giờ>[_<tag>].csv)")
+    parser.add_argument("--run-tag", default="",
+                        help="Tên gắn vào file log để phân biệt lượt chạy, vd 360p_bang")
+    parser.add_argument("--no-log", action="store_true", help="Không ghi log lượt chạy")
+    parser.add_argument("--snap-every", type=float, default=5.0,
+                        help="Lưu 1 ảnh thô mỗi N giây vào logs/<lượt chạy>_frames/ (0 = tắt)")
+    parser.add_argument("--duration", type=float, default=0.0,
+                        help="Tự dừng sau N giây (0 = chạy tới khi Ctrl+C) — để các lượt "
+                             "chạy so sánh dài bằng nhau")
+    parser.add_argument("--tool-marker-mm", type=float, default=None,
+                        help="Bật dò 1 marker đơn gắn trên đầu công cụ, cạnh (mm); phát "
+                             "/aeroscript/tool_marker_pose (cho calibrate_hand_eye.py collect --pose-topic)")
+    parser.add_argument("--tool-marker-id", type=int, default=0)
+    parser.add_argument("--tool-marker-dict", default="DICT_4X4_50")
     args, _ = parser.parse_known_args()
+    if args.pen_dims_mm:
+        L, D, W = args.pen_dims_mm
+        PEN_3D[:] = [[0, 0, 0], [0, L, 0], [-W / 2, D, 0], [W / 2, D, 0]]
+    print(f"🖊️  Mô hình bút (mm): Tip→Tail {PEN_3D[1, 1]:.1f}, Tip→đĩa {PEN_3D[2, 1]:.1f}, "
+          f"L↔R {PEN_3D[3, 0] - PEN_3D[2, 0]:.1f}")
     ping_host = args.ping_host or (os.environ.get("SSH_CLIENT", "").split() or [None])[0]
 
     rclpy.init()
@@ -1182,12 +1544,36 @@ def main():
                                 args.width, args.height, args.fourcc,
                                 args.focus, args.exposure,
                                 args.threads, args.target_fps, args.trust_motion,
-                                args.calib, args.no_filter, ping_host)
+                                args.calib, args.no_filter, ping_host,
+                                board_cfg=({"offset_mm": args.board_offset_mm, "marker_mm": args.board_marker_mm,
+                                            "draw_mm": args.board_draw_mm,
+                                            "every": args.aruco_every} if args.board else None),
+                                tool_marker_cfg=({"marker_mm": args.tool_marker_mm, "id": args.tool_marker_id,
+                                                  "dict": args.tool_marker_dict, "every": args.aruco_every}
+                                                 if args.tool_marker_mm else None),
+                                stream_width=args.stream_width, duration=args.duration,
+                                snap_every=args.snap_every,
+                                log_cfg=(None if args.no_log else {
+                                    "dir": args.log_dir, "tag": re.sub(r"[^\w.-]+", "_", args.run_tag),
+                                    "meta": {"tag": args.run_tag, "argv": sys.argv[1:], "model": args.model,
+                                             "threads": args.threads, "conf": args.conf,
+                                             "fourcc": args.fourcc, "target_fps": args.target_fps,
+                                             "no_filter": args.no_filter,
+                                             "host": os.uname().nodename}}))
+    # Vòng spin tự viết (thay rclpy.spin) để dừng được khi hết --duration.
+    # Dùng executor riêng: rclpy.spin_once() gắn/gỡ node mỗi lần gọi, tốn thừa.
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        while rclpy.ok() and not node.done:
+            executor.spin_once(timeout_sec=0.1)
     except KeyboardInterrupt:
         pass
     finally:
+        if node.run_log is not None:
+            node.run_log.close()
+            print(f"📝 Đã ghi {node.run_log.n} dòng vào {node.run_log.path}\n"
+                  f"   Xem: python3 scripts/analyze_run.py {node.run_log.path}")
         node.grabber.stop()
         node._publish_pool.shutdown(wait=False)
         node.destroy_node()
